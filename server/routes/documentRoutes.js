@@ -1,11 +1,14 @@
 const express = require('express');
 const router = express.Router();
-const { uploadDocuments, getMyDocuments, searchDocuments, deleteDocument, getPublicUserDocuments, toggleDocumentPrivacy, generateSummary } = require('../controllers/documentController');
+const { uploadDocuments, getMyDocuments, searchDocuments, deleteDocument, getPublicUserDocuments, toggleDocumentPrivacy, generateSummary, askDocumentQuestion, shareDocument, getSharedDocuments } = require('../controllers/documentController');
 const authMiddleware = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
 
 // GET /api/documents/search - Search documents
 router.get('/search', authMiddleware, searchDocuments);
+
+// GET /api/documents/shared - Get shared with me
+router.get('/shared', authMiddleware, getSharedDocuments);
 
 // GET /api/documents/user/:userId/public - Get public documents for a user
 router.get('/user/:userId/public', authMiddleware, getPublicUserDocuments);
@@ -21,6 +24,12 @@ router.get('/', authMiddleware, getMyDocuments);
 
 // POST /api/documents/:id/summarize - Generate AI Summary
 router.post('/:id/summarize', authMiddleware, generateSummary);
+
+// POST /api/documents/:id/chat - Chat with Document
+router.post('/:id/chat', authMiddleware, askDocumentQuestion);
+
+// POST /api/documents/:id/share - Share document
+router.post('/:id/share', authMiddleware, shareDocument);
 
 // POST /api/documents/upload - WITH DIAGNOSTIC SPOTLIGHT
 router.post('/upload', authMiddleware, (req, res) => {

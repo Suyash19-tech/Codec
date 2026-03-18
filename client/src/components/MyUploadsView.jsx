@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import {
     Upload, FileText, Image as ImageIcon, BookOpen,
     Trash2, Sparkles, Eye, EyeOff, X, Cpu,
-    Clock, ChevronDown, ChevronUp,
+    Clock, ChevronDown, ChevronUp, Share2, Users
 } from 'lucide-react'
 
 const toCard = (d) => {
@@ -26,6 +26,147 @@ const toCard = (d) => {
         icon,
         aiSummary: d.aiSummary || '',
     }
+}
+
+// ─── Share Modal ──────────────────────────────────────────────────────────────
+
+function ShareModal({ doc, onClose }) {
+    const [users, setUsers] = useState([])
+    const [loading, setLoading] = useState(true)
+    const [sharing, setSharing] = useState(false)
+    const [message, setMessage] = useState(null)
+
+    useEffect(() => {
+        const fetchUsers = async () => {
+            try {
+                const token = localStorage.getItem('codec_token')
+                const res = await fetch('http://localhost:5050/api/users', {
+                    headers: { Authorization: 'Bearer ' + token }
+                })
+                if (res.ok) {
+                    const data = await res.json()
+                    setUsers(data.filter(u => u._id !== localStorage.getItem('codec_user_id')))
+                }
+            } catch (err) {
+                console.error("Failed to fetch users", err)
+            } finally {
+                setLoading(false)
+            }
+        }
+        fetchUsers()
+    }, [])
+
+    const handleShare = async (targetUserId, shareWithDepartment = false) => {
+        setSharing(true)
+        setMessage(null)
+        try {
+            const token = localStorage.getItem('codec_token')
+            const res = await fetch(`http://localhost:5050/api/documents/${doc.id}/share`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: 'Bearer ' + token
+                },
+                body: JSON.stringify({ targetUserId, shareWithDepartment })
+            })
+            if (res.ok) {
+                setMessage({ type: 'success', text: shareWithDepartment ? 'Shared with department!' : 'Shared with professor!' })
+                if (!shareWithDepartment) {
+                    // Remove shared user from list to prevent double sharing in UI
+                    setUsers(prev => prev.filter(u => u._id !== targetUserId))
+                }
+            } else {
+                setMessage({ type: 'error', text: 'Sharing failed.' })
+            }
+        } catch (err) {
+            setMessage({ type: 'error', text: 'Network error.' })
+        } finally {
+            setSharing(false)
+        }
+    }
+
+    return (
+        <div style={{
+            position: 'fixed', inset: 0, zIndex: 110,
+            background: 'rgba(3,3,3,0.85)', backdropFilter: 'blur(10px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            animation: 'fade-in 0.15s ease',
+        }} onClick={onClose}>
+            <div onClick={e => e.stopPropagation()} style={{
+                width: '90%', maxWidth: 400,
+                background: 'rgba(14,14,18,0.98)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 16,
+                padding: '24px',
+                display: 'flex', flexDirection: 'column', gap: 20,
+                animation: 'slide-up 0.2s cubic-bezier(0.16,1,0.3,1)',
+            }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ fontSize: 16, fontWeight: 600, color: '#f3f4f6' }}>Share Document</h3>
+                    <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4b5563' }}><X size={18} /></button>
+                </div>
+
+                {message && (
+                    <div style={{
+                        padding: '10px 14px', borderRadius: 8,
+                        background: message.type === 'success' ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
+                        border: `1px solid ${message.type === 'success' ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`,
+                        color: message.type === 'success' ? '#4ade80' : '#f87171',
+                        fontSize: 12, textAlign: 'center'
+                    }}>
+                        {message.text}
+                    </div>
+                )}
+
+                <button
+                    disabled={sharing}
+                    onClick={() => handleShare(null, true)}
+                    style={{
+                        width: '100%', padding: '12px', borderRadius: 10,
+                        background: 'rgba(129,140,248,0.1)',
+                        border: '1px solid rgba(129,140,248,0.2)',
+                        color: '#a5b4fc', fontSize: 13, fontWeight: 500,
+                        cursor: sharing ? 'default' : 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        transition: 'all 0.15s'
+                    }}
+                    onMouseEnter={e => !sharing && (e.currentTarget.style.background = 'rgba(129,140,248,0.15)')}
+                    onMouseLeave={e => !sharing && (e.currentTarget.style.background = 'rgba(129,140,248,0.1)')}
+                >
+                    <Users size={16} /> Share with my Department
+                </button>
+
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 16 }}>
+                    <p style={{ fontSize: 11, color: '#4b5563', marginBottom: 12, fontFamily: "'DM Mono',monospace" }}>SELECT PROFESSOR</p>
+                    <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {loading ? <p style={{ color: '#374151', fontSize: 12 }}>Loading professors...</p> :
+                            users.length === 0 ? <p style={{ color: '#374151', fontSize: 12 }}>No other professors found.</p> :
+                                users.map(u => (
+                                    <div key={u._id} style={{
+                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                        padding: '8px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.02)',
+                                        border: '1px solid rgba(255,255,255,0.05)'
+                                    }}>
+                                        <div style={{ minWidth: 0 }}>
+                                            <p style={{ fontSize: 13, color: '#e5e7eb', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.name}</p>
+                                            <p style={{ fontSize: 10, color: '#374151' }}>{u.department || 'No Dept'}</p>
+                                        </div>
+                                        <button
+                                            disabled={sharing}
+                                            onClick={() => handleShare(u._id)}
+                                            style={{
+                                                padding: '4px 10px', borderRadius: 6,
+                                                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                                                color: '#9ca3af', fontSize: 10, cursor: 'pointer'
+                                            }}
+                                        >Share</button>
+                                    </div>
+                                ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    )
 }
 
 // ─── AI Summary Panel ─────────────────────────────────────────────────────────
@@ -176,11 +317,13 @@ Be precise and authoritative. No filler.`,
 
 // ─── Doc Card ─────────────────────────────────────────────────────────────────
 
-function DocCard({ doc, onDelete, onTogglePublic, onSummary, onToggleSummary, isSummaryVisible }) {
+function DocCard({ doc, onDelete, onTogglePublic, onSummary, onToggleSummary, isSummaryVisible, onAskQuestion, chatQuestion, onQuestionChange, chatAnswers, isAsking, onShare }) {
     const [hovered, setHovered] = useState(false)
     const [isSummarizing, setIsSummarizing] = useState(false)
     const [localSummary, setLocalSummary] = useState(doc.aiSummary || '')
     const Icon = doc.icon
+
+    const docId = doc.id; // Correct ID for Dashboard cards
 
     const handleSummarize = async (e) => {
         e.stopPropagation();
@@ -250,6 +393,23 @@ function DocCard({ doc, onDelete, onTogglePublic, onSummary, onToggleSummary, is
                     >
                         {doc.isPublic ? <Eye size={10} /> : <EyeOff size={10} />}
                         {doc.isPublic ? 'Public 🌍' : 'Private 🔒'}
+                    </button>
+
+                    {/* Share */}
+                    <button onClick={() => onShare(doc)} style={{
+                        display: 'flex', alignItems: 'center', gap: 5,
+                        padding: '4px 9px', borderRadius: 6,
+                        background: 'rgba(255,255,255,0.03)',
+                        border: '1px solid rgba(255,255,255,0.09)',
+                        color: '#374151',
+                        fontSize: 10, fontFamily: "'DM Mono',monospace",
+                        letterSpacing: '0.1em', cursor: 'pointer', transition: 'all 0.15s',
+                    }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)'; e.currentTarget.style.color = '#9ca3af' }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)'; e.currentTarget.style.color = '#374151' }}
+                    >
+                        <Share2 size={10} />
+                        Share
                     </button>
 
                     {/* Delete */}
@@ -350,6 +510,66 @@ function DocCard({ doc, onDelete, onTogglePublic, onSummary, onToggleSummary, is
                             background: '#1f2937', borderRadius: 4, border: '1px solid rgba(255,255,255,0.1)',
                             fontSize: 8, color: '#6b7280', fontFamily: "'DM Mono',monospace"
                         }}>AI SUMMARY</div>
+
+                        {/* Chat with Document Q&A Section */}
+                        <div style={{ marginTop: 16, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 16 }}>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                <input
+                                    type="text"
+                                    placeholder="Ask a question..."
+                                    value={chatQuestion[docId] || ''}
+                                    onChange={(e) => onQuestionChange(docId, e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && !isAsking && (chatQuestion[docId] || '').trim()) {
+                                            onAskQuestion(docId);
+                                        }
+                                    }}
+                                    style={{
+                                        flex: 1,
+                                        padding: '8px 12px',
+                                        borderRadius: 8,
+                                        background: 'rgba(255,255,255,0.03)',
+                                        border: '1px solid rgba(255,255,255,0.08)',
+                                        color: '#f3f4f6',
+                                        fontSize: 11,
+                                        outline: 'none',
+                                    }}
+                                />
+                                <button
+                                    onClick={() => onAskQuestion(docId)}
+                                    disabled={isAsking || !(chatQuestion[docId] || '').trim()}
+                                    style={{
+                                        padding: '8px 12px',
+                                        borderRadius: 8,
+                                        background: (isAsking || !(chatQuestion[docId] || '').trim()) ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.07)',
+                                        border: '1px solid rgba(255,255,255,0.1)',
+                                        color: (isAsking || !(chatQuestion[docId] || '').trim()) ? '#374151' : '#e5e7eb',
+                                        fontSize: 10,
+                                        fontFamily: "'DM Mono',monospace",
+                                        cursor: (isAsking || !(chatQuestion[docId] || '').trim()) ? 'default' : 'pointer',
+                                        transition: 'all 0.15s',
+                                    }}
+                                >
+                                    {isAsking ? '...' : 'Ask'}
+                                </button>
+                            </div>
+
+                            {chatAnswers[docId] && (
+                                <div style={{ marginTop: 12, padding: '10px', borderRadius: 8, background: 'rgba(129,140,248,0.03)', border: '1px solid rgba(129,140,248,0.1)' }}>
+                                    <div className="markdown-summary" style={{ fontSize: 10.5, color: '#d1d5db', lineHeight: 1.6 }}>
+                                        <ReactMarkdown components={{
+                                            p: ({ node, ...props }) => <p style={{ marginBottom: '6px' }} {...props} />,
+                                            ul: ({ node, ...props }) => <ul style={{ listStyleType: 'disc', paddingLeft: '16px', marginBottom: '6px' }} {...props} />,
+                                            li: ({ node, ...props }) => <li style={{ marginBottom: '3px' }} {...props} />,
+                                            h3: ({ node, ...props }) => <h3 style={{ fontSize: '12px', fontWeight: 'bold', color: '#f3f4f6', marginTop: '10px', marginBottom: '4px' }} {...props} />,
+                                            strong: ({ node, ...props }) => <strong style={{ fontWeight: 'bold', color: '#818cf8' }} {...props} />
+                                        }}>
+                                            {chatAnswers[docId]}
+                                        </ReactMarkdown>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
             </div>
@@ -363,10 +583,14 @@ export default function MyUploadsView({ userRole }) {
     const [docs, setDocs] = useState([])
     const [dragOver, setDragOver] = useState(false)
     const [summaryDoc, setSummaryDoc] = useState(null)
+    const [shareDoc, setShareDoc] = useState(null)
     const [uploading, setUploading] = useState(false)
     const [uploadError, setUploadError] = useState(null)
     const [uploadTags, setUploadTags] = useState('')
     const [visibleSummaries, setVisibleSummaries] = useState({})
+    const [chatQuestion, setChatQuestion] = useState({})
+    const [chatAnswers, setChatAnswers] = useState({})
+    const [isAsking, setIsAsking] = useState(false)
     const fileRef = useRef(null)
 
     useEffect(() => {
@@ -508,6 +732,40 @@ export default function MyUploadsView({ userRole }) {
         }));
     };
 
+    const handleAskQuestion = async (docId) => {
+        const question = chatQuestion[docId];
+        if (!question || !question.trim()) return;
+
+        setIsAsking(true);
+        try {
+            const token = localStorage.getItem('codec_token');
+            const res = await fetch(`http://localhost:5050/api/documents/${docId}/chat`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: 'Bearer ' + token,
+                },
+                body: JSON.stringify({ question }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setChatAnswers(prev => ({ ...prev, [docId]: data.answer }));
+                setChatQuestion(prev => ({ ...prev, [docId]: '' }));
+            } else {
+                alert(data.message || 'Failed to get answer');
+            }
+        } catch (err) {
+            console.error('Chat error:', err);
+            alert('Network error during chat');
+        } finally {
+            setIsAsking(false);
+        }
+    };
+
+    const handleQuestionChange = (docId, value) => {
+        setChatQuestion(prev => ({ ...prev, [docId]: value }));
+    };
+
     return (
         <div style={{ flex: 1, overflowY: 'auto', padding: '40px 48px' }}>
 
@@ -607,6 +865,12 @@ export default function MyUploadsView({ userRole }) {
                             onSummary={setSummaryDoc}
                             onToggleSummary={toggleSummary}
                             isSummaryVisible={visibleSummaries[doc.id]}
+                            onAskQuestion={handleAskQuestion}
+                            chatQuestion={chatQuestion}
+                            onQuestionChange={handleQuestionChange}
+                            chatAnswers={chatAnswers}
+                            isAsking={isAsking}
+                            onShare={setShareDoc}
                         />
                     ))}
                 </div>
@@ -617,6 +881,7 @@ export default function MyUploadsView({ userRole }) {
             )}
 
             {summaryDoc && <SummaryPanel doc={summaryDoc} onClose={() => setSummaryDoc(null)} />}
+            {shareDoc && <ShareModal doc={shareDoc} onClose={() => setShareDoc(null)} />}
         </div>
     )
 }

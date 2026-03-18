@@ -11,6 +11,8 @@ const documentSchema = new mongoose.Schema({
     aiSummary: { type: String, default: '' },
     extractedText: { type: String, default: '' },
     isPublic: { type: Boolean, default: false },
+    sharedWith: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    departmentShare: { type: Boolean, default: false },
     tags: { type: [String], default: [] }
 }, { timestamps: true });
 

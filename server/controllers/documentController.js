@@ -1,5 +1,7 @@
 // server/controllers/documentController.js
 const Document = require('../models/Document');
+const Notification = require('../models/Notification');
+const User = require('../models/User');
 const fs = require('fs');
 const pdfParse = require('pdf-parse');
 const Tesseract = require('tesseract.js');
@@ -142,11 +144,17 @@ const getMyDocuments = async (req, res) => {
 const searchDocuments = async (req, res) => {
     try {
         console.log("Search Query Params:", req.query);
-        const { q, tags, time } = req.query;
+        const { q, tags, time, privacy } = req.query;
+
+        // Base Query: Strictly the logged-in user's documents
         let query = { uploader: req.user.id };
 
+        // Privacy Filter Logic
+        if (privacy === 'public') query.isPublic = true;
+        if (privacy === 'private') query.isPublic = false;
+
         if (q) {
-            // Use $regex for flexible, partial matching on both name and content
+            // Partial matching on name or content
             query.$or = [
                 { originalName: { $regex: q, $options: 'i' } },
                 { extractedText: { $regex: q, $options: 'i' } }
@@ -256,10 +264,20 @@ const generateSummary = async (req, res) => {
     try {
         const { id } = req.params;
 
-        // Find document and ensure security (Owner OR Public)
-        const document = await Document.findOne({ _id: id, $or: [{ uploader: req.user.id }, { isPublic: true }] });
+        // Find document and populate uploader to check department
+        const document = await Document.findById(id).populate('uploader');
         if (!document) {
-            return res.status(404).json({ message: 'Document not found or unauthorized.' });
+            return res.status(404).json({ message: 'Document not found.' });
+        }
+
+        // Security Check: Owner OR Public OR SharedWith OR DeptShared
+        const user = await User.findById(req.user.id);
+        const isOwner = document.uploader._id.toString() === req.user.id;
+        const isShared = document.sharedWith.includes(req.user.id);
+        const isDeptShared = document.departmentShare && document.uploader.department === user?.department;
+
+        if (!isOwner && !document.isPublic && !isShared && !isDeptShared) {
+            return res.status(403).json({ message: 'Access denied to this document.' });
         }
 
         // Return existing summary if available
@@ -301,4 +319,158 @@ const generateSummary = async (req, res) => {
     }
 };
 
-module.exports = { uploadDocuments, getMyDocuments, searchDocuments, deleteDocument, getPublicUserDocuments, toggleDocumentPrivacy, generateSummary };
+// 8. Chat with Document (Q&A)
+const askDocumentQuestion = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { question } = req.body;
+
+        if (!question) {
+            return res.status(400).json({ message: 'Question is required' });
+        }
+
+        // Find document and populate uploader to check department
+        const document = await Document.findById(id).populate('uploader');
+        if (!document) {
+            return res.status(404).json({ message: 'Document not found.' });
+        }
+
+        // Security Check: Owner OR Public OR SharedWith OR DeptShared
+        const user = await User.findById(req.user.id);
+        const isOwner = document.uploader._id.toString() === req.user.id;
+        const isShared = document.sharedWith.includes(req.user.id);
+        const isDeptShared = document.departmentShare && document.uploader.department === user?.department;
+
+        if (!isOwner && !document.isPublic && !isShared && !isDeptShared) {
+            return res.status(403).json({ message: 'Access denied to this document.' });
+        }
+
+        // Validation: Ensure text exists
+        if (!document.extractedText || document.extractedText.trim().length === 0) {
+            return res.status(400).json({ message: 'No text available to analyze for this document.' });
+        }
+
+        // Initialize Gemini
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        // Use 'gemini-flash-latest' for better compatibility with different API keys
+        const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+
+        // Strict Academic Prompt
+        const prompt = `You are an academic AI assistant helping a professor analyze a document. Answer the user's question based strictly on the provided document text. If the answer is not in the text, say so. \n\nDocument Text: ${document.extractedText}\n\nQuestion: ${question}`;
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const answerText = response.text();
+
+        res.status(200).json({ answer: answerText });
+    } catch (error) {
+        console.error('Document Q&A Error:', error);
+        res.status(500).json({
+            message: 'Failed to get answer from AI',
+            details: error.message
+        });
+    }
+};
+
+// 9. Share document
+const shareDocument = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { targetUserId, shareWithDepartment } = req.body;
+
+        const document = await Document.findById(id);
+        if (!document) {
+            return res.status(404).json({ message: 'Document not found.' });
+        }
+
+        // Security Check: Only owner can share
+        if (document.uploader.toString() !== req.user.id) {
+            return res.status(403).json({ message: 'Unauthorized to share this document.' });
+        }
+
+        if (targetUserId) {
+            // Check if already shared
+            if (!document.sharedWith.includes(targetUserId)) {
+                document.sharedWith.push(targetUserId);
+
+                // Create Notification
+                const sender = await User.findById(req.user.id);
+                await Notification.create({
+                    recipient: targetUserId,
+                    sender: req.user.id,
+                    document: id,
+                    message: `${sender.name} shared a document with you: "${document.originalName}"`
+                });
+            }
+        }
+
+        if (shareWithDepartment !== undefined) {
+            document.departmentShare = shareWithDepartment;
+        }
+
+        await document.save();
+        res.status(200).json({ message: 'Document shared successfully.', document });
+    } catch (error) {
+        console.error('Share Document Error:', error);
+        res.status(500).json({ message: 'Server error sharing document' });
+    }
+};
+
+// 10. Get shared documents
+const getSharedDocuments = async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
+
+        const { time, type, uploaderId } = req.query;
+
+        // Shared directly with me OR shared with my department
+        let query = {
+            uploader: { $ne: req.user.id }, // Not my own document
+            $or: [
+                { sharedWith: req.user.id }
+            ]
+        };
+
+        if (user.department) {
+            // Find other users in the same department
+            const deptUsers = await User.find({ department: user.department, _id: { $ne: req.user.id } }).select('_id');
+            const deptUserIds = deptUsers.map(u => u._id);
+
+            query.$or.push({
+                uploader: { $in: deptUserIds },
+                departmentShare: true
+            });
+        }
+
+        // Apply filters
+        if (uploaderId) {
+            query.uploader = uploaderId;
+        }
+
+        if (time && time !== 'all') {
+            const cutoff = new Date();
+            cutoff.setDate(cutoff.getDate() - parseInt(time));
+            query.createdAt = { $gte: cutoff };
+        }
+
+        if (type && type !== 'all') {
+            if (type === 'pdf') query.mimeType = { $regex: 'pdf', $options: 'i' };
+            else if (type === 'image') query.mimeType = { $regex: 'image', $options: 'i' };
+            else if (type === 'doc') query.mimeType = { $regex: 'officedocument|msword|word', $options: 'i' };
+        }
+
+        const documents = await Document.find(query)
+            .populate('uploader', 'name designation department profilePic')
+            .sort({ createdAt: -1 });
+
+        res.status(200).json(documents);
+    } catch (error) {
+        console.error('Get Shared Documents Error:', error);
+        res.status(500).json({ message: 'Server error fetching shared documents' });
+    }
+};
+
+module.exports = { uploadDocuments, getMyDocuments, searchDocuments, deleteDocument, getPublicUserDocuments, toggleDocumentPrivacy, generateSummary, askDocumentQuestion, shareDocument, getSharedDocuments };

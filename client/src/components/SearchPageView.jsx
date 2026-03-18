@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { Search, FileText, Image as ImageIcon, BookOpen, Clock, User, ScanSearch, X, Loader, Sparkles } from 'lucide-react'
+import { Search, FileText, Image as ImageIcon, BookOpen, Clock, User, ScanSearch, X, Loader, Sparkles, Eye } from 'lucide-react'
 
 // ─── Result row ───────────────────────────────────────────────────────────────
 
-function ResultRow({ doc, onSummarize, isSummarizing, activeSummaryId, onToggleSummary, isSummaryVisible }) {
+function ResultRow({ doc, onSummarize, isSummarizing, activeSummaryId, onToggleSummary, isSummaryVisible, onAskQuestion, chatQuestion, onQuestionChange, chatAnswers, isAsking }) {
     const [hovered, setHovered] = useState(false)
 
     // Determine icon based on mimeType/extension
@@ -169,6 +169,66 @@ function ResultRow({ doc, onSummarize, isSummarizing, activeSummaryId, onToggleS
                         background: '#1f2937', borderRadius: 4, border: '1px solid rgba(255,255,255,0.1)',
                         fontSize: 8, color: '#6b7280', fontFamily: "'DM Mono',monospace"
                     }}>AI SUMMARY</div>
+
+                    {/* Chat with Document Q&A Section */}
+                    <div style={{ marginTop: 16, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 16 }}>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                            <input
+                                type="text"
+                                placeholder="Ask a specific question about this document..."
+                                value={chatQuestion[docId] || ''}
+                                onChange={(e) => onQuestionChange(docId, e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !isAsking && (chatQuestion[docId] || '').trim()) {
+                                        onAskQuestion(docId);
+                                    }
+                                }}
+                                style={{
+                                    flex: 1,
+                                    padding: '8px 12px',
+                                    borderRadius: 8,
+                                    background: 'rgba(255,255,255,0.03)',
+                                    border: '1px solid rgba(255,255,255,0.08)',
+                                    color: '#f3f4f6',
+                                    fontSize: 12,
+                                    outline: 'none',
+                                }}
+                            />
+                            <button
+                                onClick={() => onAskQuestion(docId)}
+                                disabled={isAsking || !(chatQuestion[docId] || '').trim()}
+                                style={{
+                                    padding: '8px 16px',
+                                    borderRadius: 8,
+                                    background: (isAsking || !(chatQuestion[docId] || '').trim()) ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.07)',
+                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    color: (isAsking || !(chatQuestion[docId] || '').trim()) ? '#374151' : '#e5e7eb',
+                                    fontSize: 11,
+                                    fontFamily: "'DM Mono',monospace",
+                                    cursor: (isAsking || !(chatQuestion[docId] || '').trim()) ? 'default' : 'pointer',
+                                    transition: 'all 0.15s',
+                                }}
+                            >
+                                {isAsking && activeSummaryId === docId ? 'Thinking...' : 'Ask AI'}
+                            </button>
+                        </div>
+
+                        {chatAnswers[docId] && (
+                            <div style={{ marginTop: 14, padding: '12px', borderRadius: 8, background: 'rgba(129,140,248,0.03)', border: '1px solid rgba(129,140,248,0.1)' }}>
+                                <div className="markdown-summary" style={{ fontSize: 11, color: '#d1d5db', lineHeight: 1.6 }}>
+                                    <ReactMarkdown components={{
+                                        p: ({ node, ...props }) => <p style={{ marginBottom: '8px' }} {...props} />,
+                                        ul: ({ node, ...props }) => <ul style={{ listStyleType: 'disc', paddingLeft: '20px', marginBottom: '8px' }} {...props} />,
+                                        li: ({ node, ...props }) => <li style={{ marginBottom: '4px' }} {...props} />,
+                                        h3: ({ node, ...props }) => <h3 style={{ fontSize: '13px', fontWeight: 'bold', color: '#f3f4f6', marginTop: '12px', marginBottom: '6px' }} {...props} />,
+                                        strong: ({ node, ...props }) => <strong style={{ fontWeight: 'bold', color: '#818cf8' }} {...props} />
+                                    }}>
+                                        {chatAnswers[docId]}
+                                    </ReactMarkdown>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
         </div>
@@ -207,10 +267,15 @@ export default function SearchPageView() {
     const [activeFilter, setActiveFilter] = useState('All')
     const [tagFilter, setTagFilter] = useState('')
     const [timeFilter, setTimeFilter] = useState('all')
+    const [privacyFilter, setPrivacyFilter] = useState('all')
 
     const [isSummarizing, setIsSummarizing] = useState(false);
     const [activeSummaryId, setActiveSummaryId] = useState(null);
     const [visibleSummaries, setVisibleSummaries] = useState({});
+
+    const [chatQuestion, setChatQuestion] = useState({});
+    const [chatAnswers, setChatAnswers] = useState({});
+    const [isAsking, setIsAsking] = useState(false);
 
     // Debounced search effect
     useEffect(() => {
@@ -219,7 +284,7 @@ export default function SearchPageView() {
         }, 300);
 
         return () => clearTimeout(timer);
-    }, [searchQuery, tagFilter, timeFilter]);
+    }, [searchQuery, tagFilter, timeFilter, privacyFilter]);
 
     const handleSearch = async (e, queryOverride) => {
         if (e) e.preventDefault()
@@ -232,7 +297,7 @@ export default function SearchPageView() {
             const token = localStorage.getItem('codec_token')
             if (!token) throw new Error('Not authenticated')
 
-            const url = `http://localhost:5050/api/documents/search?q=${encodeURIComponent(query)}&tags=${encodeURIComponent(tagFilter)}&time=${timeFilter}`
+            const url = `http://localhost:5050/api/documents/search?q=${encodeURIComponent(query)}&tags=${encodeURIComponent(tagFilter)}&time=${timeFilter}&privacy=${privacyFilter}`
             const res = await fetch(url, {
                 headers: {
                     'Authorization': 'Bearer ' + token
@@ -284,6 +349,42 @@ export default function SearchPageView() {
 
     const toggleSummary = (docId) => {
         setVisibleSummaries(prev => ({ ...prev, [docId]: !prev[docId] }));
+    };
+
+    const handleAskQuestion = async (docId) => {
+        const question = chatQuestion[docId];
+        if (!question || !question.trim()) return;
+
+        setIsAsking(true);
+        setActiveSummaryId(docId); // Reuse this to track active doc
+        try {
+            const token = localStorage.getItem('codec_token');
+            const res = await fetch(`http://localhost:5050/api/documents/${docId}/chat`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: 'Bearer ' + token,
+                },
+                body: JSON.stringify({ question }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setChatAnswers(prev => ({ ...prev, [docId]: data.answer }));
+                setChatQuestion(prev => ({ ...prev, [docId]: '' }));
+            } else {
+                alert(data.message || 'Failed to get answer');
+            }
+        } catch (err) {
+            console.error('Chat error:', err);
+            alert('Network error during chat');
+        } finally {
+            setIsAsking(false);
+            setActiveSummaryId(null);
+        }
+    };
+
+    const handleQuestionChange = (docId, value) => {
+        setChatQuestion(prev => ({ ...prev, [docId]: value }));
     };
 
     const filteredDocuments = useMemo(() => {
@@ -376,6 +477,29 @@ export default function SearchPageView() {
                         </select>
                         <Clock size={14} color="#6b7280" style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
                     </div>
+                    <div style={{ position: 'relative', flex: 0.8 }}>
+                        <select
+                            value={privacyFilter}
+                            onChange={e => setPrivacyFilter(e.target.value)}
+                            style={{
+                                width: '100%',
+                                padding: '12px 16px',
+                                borderRadius: 10,
+                                background: 'rgba(255,255,255,0.05)',
+                                border: '1px solid rgba(255,255,255,0.1)',
+                                color: '#f3f4f6',
+                                fontSize: 14,
+                                outline: 'none',
+                                appearance: 'none',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            <option value="all">All Files</option>
+                            <option value="public">Public Only</option>
+                            <option value="private">Private Only</option>
+                        </select>
+                        <Eye size={14} color="#6b7280" style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                    </div>
                 </form>
 
                 <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
@@ -413,6 +537,11 @@ export default function SearchPageView() {
                                 activeSummaryId={activeSummaryId}
                                 onToggleSummary={toggleSummary}
                                 isSummaryVisible={visibleSummaries[doc._id || doc.id]}
+                                onAskQuestion={handleAskQuestion}
+                                chatQuestion={chatQuestion}
+                                onQuestionChange={handleQuestionChange}
+                                chatAnswers={chatAnswers}
+                                isAsking={isAsking}
                             />
                         ))}
                     </div>
