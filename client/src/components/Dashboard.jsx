@@ -6,11 +6,13 @@ import SearchPageView from './SearchPageView'
 import CommunityView from './CommunityView'
 import ProfileView from './ProfileView'
 import SharedDocuments from './SharedDocuments'
+import ManageGroups from './ManageGroups'
 
 const NAV = [
   { id: 'uploads', icon: Upload, label: 'My Files' },
   { id: 'search', icon: Search, label: 'Deep Search' },
   { id: 'shared', icon: Share2, label: 'Shared' },
+  { id: 'groups', icon: Users, label: 'My Groups' },
   { id: 'community', icon: Users, label: 'Community' },
 ]
 
@@ -92,6 +94,7 @@ export default function Dashboard({ userRole }) {
     if (view === 'community') return <CommunityView />
     if (view === 'profile') return <ProfileView />
     if (view === 'shared') return <SharedDocuments />
+    if (view === 'groups') return <ManageGroups />
     return null
   }
 

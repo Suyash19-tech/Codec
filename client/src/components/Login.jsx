@@ -130,6 +130,7 @@ const Login = ({ onLogin }) => {
       }
       localStorage.setItem('codec_token', data.token);
       localStorage.setItem('codec_user', JSON.stringify(data.user));
+      localStorage.setItem('codec_user_id', data.user.id || data.user._id); // Save user ID explicitly
       if (onLogin) onLogin(data.user);
       navigate('/dashboard');
     } catch (error) {

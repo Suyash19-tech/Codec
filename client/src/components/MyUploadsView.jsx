@@ -32,31 +32,37 @@ const toCard = (d) => {
 
 function ShareModal({ doc, onClose }) {
     const [users, setUsers] = useState([])
+    const [groups, setGroups] = useState([])
     const [loading, setLoading] = useState(true)
     const [sharing, setSharing] = useState(false)
     const [message, setMessage] = useState(null)
 
     useEffect(() => {
-        const fetchUsers = async () => {
+        const fetchData = async () => {
             try {
                 const token = localStorage.getItem('codec_token')
-                const res = await fetch('http://localhost:5050/api/users', {
-                    headers: { Authorization: 'Bearer ' + token }
-                })
-                if (res.ok) {
-                    const data = await res.json()
+                const [usersRes, groupsRes] = await Promise.all([
+                    fetch('http://localhost:5050/api/users', { headers: { Authorization: 'Bearer ' + token } }),
+                    fetch('http://localhost:5050/api/groups', { headers: { Authorization: 'Bearer ' + token } })
+                ])
+
+                if (usersRes.ok) {
+                    const data = await usersRes.json()
                     setUsers(data.filter(u => u._id !== localStorage.getItem('codec_user_id')))
                 }
+                if (groupsRes.ok) {
+                    setGroups(await groupsRes.json())
+                }
             } catch (err) {
-                console.error("Failed to fetch users", err)
+                console.error("Failed to fetch sharing data", err)
             } finally {
                 setLoading(false)
             }
         }
-        fetchUsers()
+        fetchData()
     }, [])
 
-    const handleShare = async (targetUserId, shareWithDepartment = false) => {
+    const handleShare = async (targetUserId, shareWithDepartment = false, targetGroupId = null) => {
         setSharing(true)
         setMessage(null)
         try {
@@ -67,12 +73,15 @@ function ShareModal({ doc, onClose }) {
                     'Content-Type': 'application/json',
                     Authorization: 'Bearer ' + token
                 },
-                body: JSON.stringify({ targetUserId, shareWithDepartment })
+                body: JSON.stringify({ targetUserId, shareWithDepartment, targetGroupId })
             })
             if (res.ok) {
-                setMessage({ type: 'success', text: shareWithDepartment ? 'Shared with department!' : 'Shared with professor!' })
-                if (!shareWithDepartment) {
-                    // Remove shared user from list to prevent double sharing in UI
+                let successMsg = 'Document shared!'
+                if (shareWithDepartment) successMsg = 'Shared with department!'
+                else if (targetGroupId) successMsg = 'Shared with group!'
+
+                setMessage({ type: 'success', text: successMsg })
+                if (targetUserId) {
                     setUsers(prev => prev.filter(u => u._id !== targetUserId))
                 }
             } else {
@@ -93,12 +102,13 @@ function ShareModal({ doc, onClose }) {
             animation: 'fade-in 0.15s ease',
         }} onClick={onClose}>
             <div onClick={e => e.stopPropagation()} style={{
-                width: '90%', maxWidth: 400,
+                width: '90%', maxWidth: 420,
                 background: 'rgba(14,14,18,0.98)',
                 border: '1px solid rgba(255,255,255,0.1)',
                 borderRadius: 16,
                 padding: '24px',
                 display: 'flex', flexDirection: 'column', gap: 20,
+                maxHeight: '85vh', overflow: 'hidden',
                 animation: 'slide-up 0.2s cubic-bezier(0.16,1,0.3,1)',
             }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -118,50 +128,85 @@ function ShareModal({ doc, onClose }) {
                     </div>
                 )}
 
-                <button
-                    disabled={sharing}
-                    onClick={() => handleShare(null, true)}
-                    style={{
-                        width: '100%', padding: '12px', borderRadius: 10,
-                        background: 'rgba(129,140,248,0.1)',
-                        border: '1px solid rgba(129,140,248,0.2)',
-                        color: '#a5b4fc', fontSize: 13, fontWeight: 500,
-                        cursor: sharing ? 'default' : 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                        transition: 'all 0.15s'
-                    }}
-                    onMouseEnter={e => !sharing && (e.currentTarget.style.background = 'rgba(129,140,248,0.15)')}
-                    onMouseLeave={e => !sharing && (e.currentTarget.style.background = 'rgba(129,140,248,0.1)')}
-                >
-                    <Users size={16} /> Share with my Department
-                </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <button
+                        disabled={sharing}
+                        onClick={() => handleShare(null, true)}
+                        style={{
+                            width: '100%', padding: '12px', borderRadius: 10,
+                            background: 'rgba(129,140,248,0.1)',
+                            border: '1px solid rgba(129,140,248,0.2)',
+                            color: '#a5b4fc', fontSize: 13, fontWeight: 500,
+                            cursor: sharing ? 'default' : 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                            transition: 'all 0.15s'
+                        }}
+                        onMouseEnter={e => !sharing && (e.currentTarget.style.background = 'rgba(129,140,248,0.15)')}
+                        onMouseLeave={e => !sharing && (e.currentTarget.style.background = 'rgba(129,140,248,0.1)')}
+                    >
+                        <Users size={16} /> Share with my Department
+                    </button>
+                </div>
 
-                <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 16 }}>
-                    <p style={{ fontSize: 11, color: '#4b5563', marginBottom: 12, fontFamily: "'DM Mono',monospace" }}>SELECT PROFESSOR</p>
-                    <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {loading ? <p style={{ color: '#374151', fontSize: 12 }}>Loading professors...</p> :
-                            users.length === 0 ? <p style={{ color: '#374151', fontSize: 12 }}>No other professors found.</p> :
-                                users.map(u => (
-                                    <div key={u._id} style={{
-                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                        padding: '8px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.02)',
-                                        border: '1px solid rgba(255,255,255,0.05)'
-                                    }}>
-                                        <div style={{ minWidth: 0 }}>
-                                            <p style={{ fontSize: 13, color: '#e5e7eb', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.name}</p>
-                                            <p style={{ fontSize: 10, color: '#374151' }}>{u.department || 'No Dept'}</p>
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 16, overflowY: 'auto' }}>
+                    {/* Groups Section */}
+                    <div style={{ marginBottom: 20 }}>
+                        <p style={{ fontSize: 11, color: '#4b5563', marginBottom: 12, fontFamily: "'DM Mono',monospace" }}>SHARE WITH GROUPS</p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {loading ? <p style={{ color: '#374151', fontSize: 12 }}>Loading groups...</p> :
+                                groups.length === 0 ? <p style={{ color: '#374151', fontSize: 11 }}>No groups joined.</p> :
+                                    groups.map(g => (
+                                        <div key={g._id} style={{
+                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                            padding: '8px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.02)',
+                                            border: '1px solid rgba(255,255,255,0.05)'
+                                        }}>
+                                            <div style={{ minWidth: 0 }}>
+                                                <p style={{ fontSize: 13, color: '#e5e7eb', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.name}</p>
+                                                <p style={{ fontSize: 10, color: '#374151' }}>{g.members.length} members</p>
+                                            </div>
+                                            <button
+                                                disabled={sharing}
+                                                onClick={() => handleShare(null, false, g._id)}
+                                                style={{
+                                                    padding: '4px 10px', borderRadius: 6,
+                                                    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                                                    color: '#9ca3af', fontSize: 10, cursor: 'pointer'
+                                                }}
+                                            >Share</button>
                                         </div>
-                                        <button
-                                            disabled={sharing}
-                                            onClick={() => handleShare(u._id)}
-                                            style={{
-                                                padding: '4px 10px', borderRadius: 6,
-                                                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                                                color: '#9ca3af', fontSize: 10, cursor: 'pointer'
-                                            }}
-                                        >Share</button>
-                                    </div>
-                                ))}
+                                    ))}
+                        </div>
+                    </div>
+
+                    {/* Professors Section */}
+                    <div>
+                        <p style={{ fontSize: 11, color: '#4b5563', marginBottom: 12, fontFamily: "'DM Mono',monospace" }}>SHARE WITH PROFESSORS</p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {loading ? null :
+                                users.length === 0 ? <p style={{ color: '#374151', fontSize: 11 }}>No other professors found.</p> :
+                                    users.map(u => (
+                                        <div key={u._id} style={{
+                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                            padding: '8px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.02)',
+                                            border: '1px solid rgba(255,255,255,0.05)'
+                                        }}>
+                                            <div style={{ minWidth: 0 }}>
+                                                <p style={{ fontSize: 13, color: '#e5e7eb', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.name}</p>
+                                                <p style={{ fontSize: 10, color: '#374151' }}>{u.department || 'No Dept'}</p>
+                                            </div>
+                                            <button
+                                                disabled={sharing}
+                                                onClick={() => handleShare(u._id)}
+                                                style={{
+                                                    padding: '4px 10px', borderRadius: 6,
+                                                    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                                                    color: '#9ca3af', fontSize: 10, cursor: 'pointer'
+                                                }}
+                                            >Share</button>
+                                        </div>
+                                    ))}
+                        </div>
                     </div>
                 </div>
             </div>

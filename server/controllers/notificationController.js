@@ -23,7 +23,7 @@ const markAsRead = async (req, res) => {
                 isRead: true,
                 expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) // Auto-delete in 24 hours after reading
             },
-            { new: true }
+            { returnDocument: 'after' }
         );
         if (!notification) {
             return res.status(404).json({ message: 'Notification not found.' });

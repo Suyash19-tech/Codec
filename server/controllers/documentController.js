@@ -2,6 +2,7 @@
 const Document = require('../models/Document');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
+const Group = require('../models/Group');
 const fs = require('fs');
 const pdfParse = require('pdf-parse');
 const Tesseract = require('tesseract.js');
@@ -376,7 +377,7 @@ const askDocumentQuestion = async (req, res) => {
 const shareDocument = async (req, res) => {
     try {
         const { id } = req.params;
-        const { targetUserId, shareWithDepartment } = req.body;
+        const { targetUserId, targetGroupId, shareWithDepartment } = req.body;
 
         const document = await Document.findById(id);
         if (!document) {
@@ -388,19 +389,44 @@ const shareDocument = async (req, res) => {
             return res.status(403).json({ message: 'Unauthorized to share this document.' });
         }
 
+        const sender = await User.findById(req.user.id);
+
         if (targetUserId) {
             // Check if already shared
             if (!document.sharedWith.includes(targetUserId)) {
                 document.sharedWith.push(targetUserId);
 
                 // Create Notification
-                const sender = await User.findById(req.user.id);
                 await Notification.create({
                     recipient: targetUserId,
                     sender: req.user.id,
                     document: id,
                     message: `${sender.name} shared a document with you: "${document.originalName}"`
                 });
+            }
+        }
+
+        if (targetGroupId) {
+            const group = await Group.findById(targetGroupId);
+            if (!group) return res.status(404).json({ message: 'Group not found.' });
+
+            // Share with all group members except uploader
+            const notifications = [];
+            group.members.forEach(memberId => {
+                const mid = memberId.toString();
+                if (mid !== req.user.id && !document.sharedWith.includes(mid)) {
+                    document.sharedWith.push(mid);
+                    notifications.push({
+                        recipient: mid,
+                        sender: req.user.id,
+                        document: id,
+                        message: `${sender.name} shared a document with your group "${group.name}": "${document.originalName}"`
+                    });
+                }
+            });
+
+            if (notifications.length > 0) {
+                await Notification.insertMany(notifications);
             }
         }
 
