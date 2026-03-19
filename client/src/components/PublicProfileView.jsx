@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown'
 import { Search, FileText, Image as ImageIcon, BookOpen, Clock, User, Download, Sparkles } from 'lucide-react'
 
 // ─── Result row ───────────────────────────────────────────────────────────────
-function PublicDocRow({ doc, onSummarize, isSummarizing, activeSummaryId, onToggleSummary, isSummaryVisible }) {
+function PublicDocRow({ doc, onSummarize, isSummarizing, activeSummaryId, onToggleSummary, isSummaryVisible, onAskQuestion, chatQuestion, onQuestionChange, chatAnswers, isAsking }) {
     const [hovered, setHovered] = useState(false)
 
     const getIcon = (mimeType, fileName) => {
@@ -168,6 +168,66 @@ function PublicDocRow({ doc, onSummarize, isSummarizing, activeSummaryId, onTogg
                         background: '#1f2937', borderRadius: 4, border: '1px solid rgba(255,255,255,0.1)',
                         fontSize: 8, color: '#6b7280', fontFamily: "'DM Mono',monospace"
                     }}>AI SUMMARY</div>
+
+                    {/* Chat with Document Q&A Section */}
+                    <div style={{ marginTop: 16, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 16 }}>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                            <input
+                                type="text"
+                                placeholder="Ask a specific question about this document..."
+                                value={chatQuestion[docId] || ''}
+                                onChange={(e) => onQuestionChange(docId, e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !isAsking && (chatQuestion[docId] || '').trim()) {
+                                        onAskQuestion(docId);
+                                    }
+                                }}
+                                style={{
+                                    flex: 1,
+                                    padding: '8px 12px',
+                                    borderRadius: 8,
+                                    background: 'rgba(255,255,255,0.03)',
+                                    border: '1px solid rgba(255,255,255,0.08)',
+                                    color: '#f3f4f6',
+                                    fontSize: 12,
+                                    outline: 'none',
+                                }}
+                            />
+                            <button
+                                onClick={() => onAskQuestion(docId)}
+                                disabled={isAsking || !(chatQuestion[docId] || '').trim()}
+                                style={{
+                                    padding: '8px 16px',
+                                    borderRadius: 8,
+                                    background: (isAsking || !(chatQuestion[docId] || '').trim()) ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.07)',
+                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    color: (isAsking || !(chatQuestion[docId] || '').trim()) ? '#374151' : '#e5e7eb',
+                                    fontSize: 11,
+                                    fontFamily: "'DM Mono',monospace",
+                                    cursor: (isAsking || !(chatQuestion[docId] || '').trim()) ? 'default' : 'pointer',
+                                    transition: 'all 0.15s',
+                                }}
+                            >
+                                {isAsking && activeSummaryId === docId ? 'Thinking...' : 'Ask AI'}
+                            </button>
+                        </div>
+
+                        {chatAnswers[docId] && (
+                            <div style={{ marginTop: 14, padding: '12px', borderRadius: 8, background: 'rgba(129,140,248,0.03)', border: '1px solid rgba(129,140,248,0.1)' }}>
+                                <div className="markdown-summary" style={{ fontSize: 11, color: '#d1d5db', lineHeight: 1.6 }}>
+                                    <ReactMarkdown components={{
+                                        p: ({ node, ...props }) => <p style={{ marginBottom: '8px' }} {...props} />,
+                                        ul: ({ node, ...props }) => <ul style={{ listStyleType: 'disc', paddingLeft: '20px', marginBottom: '8px' }} {...props} />,
+                                        li: ({ node, ...props }) => <li style={{ marginBottom: '4px' }} {...props} />,
+                                        h3: ({ node, ...props }) => <h3 style={{ fontSize: '13px', fontWeight: 'bold', color: '#f3f4f6', marginTop: '12px', marginBottom: '6px' }} {...props} />,
+                                        strong: ({ node, ...props }) => <strong style={{ fontWeight: 'bold', color: '#818cf8' }} {...props} />
+                                    }}>
+                                        {chatAnswers[docId]}
+                                    </ReactMarkdown>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
         </div>
@@ -185,6 +245,10 @@ export default function PublicProfileView() {
     const [isSummarizing, setIsSummarizing] = useState(false)
     const [activeSummaryId, setActiveSummaryId] = useState(null)
     const [visibleSummaries, setVisibleSummaries] = useState({})
+
+    const [chatQuestion, setChatQuestion] = useState({})
+    const [chatAnswers, setChatAnswers] = useState({})
+    const [isAsking, setIsAsking] = useState(false)
 
     // Fetch user details
     useEffect(() => {
@@ -265,6 +329,42 @@ export default function PublicProfileView() {
 
     const toggleSummary = (docId) => {
         setVisibleSummaries(prev => ({ ...prev, [docId]: !prev[docId] }));
+    };
+
+    const handleAskQuestion = async (docId) => {
+        const question = chatQuestion[docId];
+        if (!question || !question.trim()) return;
+
+        setIsAsking(true);
+        setActiveSummaryId(docId); // Reuse this to track active doc
+        try {
+            const token = localStorage.getItem('codec_token');
+            const res = await fetch(`http://localhost:5050/api/documents/${docId}/chat`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: 'Bearer ' + token,
+                },
+                body: JSON.stringify({ question }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setChatAnswers(prev => ({ ...prev, [docId]: data.answer }));
+                setChatQuestion(prev => ({ ...prev, [docId]: '' }));
+            } else {
+                alert(data.message || 'Failed to get answer');
+            }
+        } catch (err) {
+            console.error('Chat error:', err);
+            alert('Network error during chat');
+        } finally {
+            setIsAsking(false);
+            setActiveSummaryId(null);
+        }
+    };
+
+    const handleQuestionChange = (docId, value) => {
+        setChatQuestion(prev => ({ ...prev, [docId]: value }));
     };
 
     const getInitials = (name) => {
@@ -350,6 +450,11 @@ export default function PublicProfileView() {
                                 activeSummaryId={activeSummaryId}
                                 onToggleSummary={toggleSummary}
                                 isSummaryVisible={visibleSummaries[doc._id || doc.id]}
+                                onAskQuestion={handleAskQuestion}
+                                chatQuestion={chatQuestion}
+                                onQuestionChange={handleQuestionChange}
+                                chatAnswers={chatAnswers}
+                                isAsking={isAsking}
                             />
                         ))
                     ) : (
