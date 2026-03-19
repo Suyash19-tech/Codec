@@ -4,6 +4,7 @@ import Onboarding from './components/Onboarding'
 import Login from './components/Login'
 import Signup from './components/Signup'
 import Dashboard from './components/Dashboard'
+import AdminDashboard from './components/AdminDashboard'
 import PublicProfileView from './components/PublicProfileView'
 
 function App() {
@@ -86,6 +87,15 @@ function App() {
               element={
                 <ProtectedRoute>
                   <Dashboard userRole={userRole} />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute>
+                  <AdminDashboard />
                 </ProtectedRoute>
               }
             />

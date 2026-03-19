@@ -16,6 +16,13 @@ export default function Dashboard({ userRole }) {
   const navigate  = useNavigate()
   const [view, setView] = useState('uploads')
 
+  // Redirect admins to admin dashboard
+  React.useEffect(() => {
+    if (userRole === 'Admin') {
+      navigate('/admin', { replace: true })
+    }
+  }, [userRole, navigate])
+
   const handleLogout = useCallback(() => {
     localStorage.removeItem('codec_token')
     localStorage.removeItem('codec_user')
