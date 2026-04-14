@@ -19,7 +19,11 @@ process.on('unhandledRejection', (reason) => {
 const app = express();
 
 // 1. Middleware
-app.use(cors({ origin: '*' }));
+app.use(cors({
+  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
