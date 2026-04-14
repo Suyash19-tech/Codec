@@ -1,11 +1,307 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { Search, FileText, Image as ImageIcon, BookOpen, Clock, User, ScanSearch, X, Loader, Sparkles, Eye } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Search, FileText, Image as ImageIcon, BookOpen, Clock, User, ScanSearch, X, Loader, Sparkles, Eye, MessageSquare, Send, ChevronRight, Trash2 } from 'lucide-react'
+
+const IMAGE_TYPES = ['PNG', 'JPG', 'JPEG', 'GIF', 'WEBP', 'SVG']
+const PDF_TYPES = ['PDF']
+const DOWNLOAD_ONLY_TYPES = ['ZIP', 'RAR', '7Z', 'TAR', 'GZ']
+
+// ─── File Type Detection Helper ───────────────────────────────────────────
+
+function getFileType(filename) {
+    if (!filename) return 'unsupported';
+
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+
+    // Image formats
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico'].includes(ext)) {
+        return 'image';
+    }
+
+    // Video formats
+    if (['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'm4v'].includes(ext)) {
+        return 'video';
+    }
+
+    // Audio formats
+    if (['mp3', 'wav', 'ogg', 'aac', 'm4a', 'flac', 'wma'].includes(ext)) {
+        return 'audio';
+    }
+
+    // PDF
+    if (ext === 'pdf') {
+        return 'pdf';
+    }
+
+    // Everything else is unsupported
+    return 'unsupported';
+}
+
+// ─── Document View Modal ───────────────────────────────────────────────────
+
+function DocumentViewModal({ doc, onClose, searchQuery }) {
+    const fileType = getFileType(doc.fileUrl || doc.title);
+
+    // Build PDF viewer URL with search highlighting
+    const buildPdfViewerUrl = () => {
+        // PDF.js viewer URL with file parameter
+        const fileParam = encodeURIComponent(doc.fileUrl);
+
+        // Debug logging
+        console.log('[PDF Viewer] Search Query:', searchQuery);
+        console.log('[PDF Viewer] File URL:', doc.fileUrl);
+
+        // If we have a search query, add it as a hash parameter
+        // PDF.js format: viewer.html?file=URL#search=term
+        if (searchQuery && searchQuery.trim()) {
+            const searchTerm = encodeURIComponent(searchQuery.trim());
+            const finalUrl = `https://mozilla.github.io/pdf.js/web/viewer.html?file=${fileParam}#search=${searchTerm}`;
+            console.log('[PDF Viewer] Final URL with search:', finalUrl);
+            return finalUrl;
+        }
+
+        const baseUrl = `https://mozilla.github.io/pdf.js/web/viewer.html?file=${fileParam}`;
+        console.log('[PDF Viewer] Base URL (no search):', baseUrl);
+        return baseUrl;
+    };
+
+    return (
+        <div style={{
+            position: 'fixed', inset: 0, zIndex: 100,
+            background: 'rgba(3,3,3,0.9)', backdropFilter: 'blur(14px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            animation: 'fade-in 0.15s ease',
+        }} onClick={onClose}>
+            <div onClick={e => e.stopPropagation()} style={{
+                width: '95%', maxWidth: 1000, height: '90vh',
+                background: 'rgba(14,14,18,0.98)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 20,
+                boxShadow: '0 32px 80px rgba(0,0,0,0.7)',
+                display: 'flex', flexDirection: 'column',
+                overflow: 'hidden',
+                animation: 'slide-up 0.2s cubic-bezier(0.16,1,0.3,1)',
+            }}>
+                {/* Header */}
+                <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '16px 24px',
+                    borderBottom: '1px solid rgba(255,255,255,0.07)',
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <FileText size={18} color="#818cf8" />
+                        <div>
+                            <h3 style={{ fontSize: 15, fontWeight: 600, color: '#f3f4f6' }}>{doc.title}</h3>
+                            <p style={{ fontSize: 10, color: '#9ca3af', fontFamily: "'DM Mono',monospace" }}>{doc.type} · {doc.size}</p>
+                        </div>
+                    </div>
+                    <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', padding: 4 }}
+                        onMouseEnter={e => e.currentTarget.style.color = '#d1d5db'}
+                        onMouseLeave={e => e.currentTarget.style.color = '#6b7280'}
+                    ><X size={20} /></button>
+                </div>
+
+                {/* Body */}
+                <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+                    {/* Full Width Preview */}
+                    <div style={{ flex: 1, background: '#0a0a0c', display: 'flex', flexDirection: 'column' }}>
+                        {fileType === 'image' ? (
+                            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+                                <img
+                                    src={doc.fileUrl}
+                                    alt={doc.title}
+                                    style={{
+                                        width: '100%',
+                                        height: '100%',
+                                        maxHeight: '70vh',
+                                        objectFit: 'contain',
+                                        borderRadius: 8,
+                                        boxShadow: '0 8px 32px rgba(0,0,0,0.5)'
+                                    }}
+                                />
+                            </div>
+                        ) : fileType === 'video' ? (
+                            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+                                <video
+                                    src={doc.fileUrl}
+                                    controls
+                                    style={{
+                                        width: '100%',
+                                        maxHeight: '70vh',
+                                        borderRadius: 8,
+                                        outline: 'none',
+                                        boxShadow: '0 8px 32px rgba(0,0,0,0.5)'
+                                    }}
+                                >
+                                    Your browser does not support the video tag.
+                                </video>
+                            </div>
+                        ) : fileType === 'audio' ? (
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 40, gap: 24 }}>
+                                <div style={{
+                                    width: 80, height: 80, borderRadius: 20,
+                                    background: 'rgba(129,140,248,0.1)',
+                                    border: '1px solid rgba(129,140,248,0.2)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                }}>
+                                    <FileText size={36} color="#818cf8" />
+                                </div>
+                                <div style={{ textAlign: 'center' }}>
+                                    <h4 style={{ fontSize: 16, fontWeight: 600, color: '#f3f4f6', marginBottom: 6 }}>Audio File</h4>
+                                    <p style={{ fontSize: 13, color: '#6b7280' }}>{doc.title}</p>
+                                </div>
+                                <audio
+                                    src={doc.fileUrl}
+                                    controls
+                                    style={{
+                                        width: '100%',
+                                        maxWidth: 500,
+                                        marginTop: 10,
+                                        outline: 'none'
+                                    }}
+                                >
+                                    Your browser does not support the audio tag.
+                                </audio>
+                            </div>
+                        ) : fileType === 'pdf' ? (
+                            <div style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                width: '100%',
+                                height: '100%',
+                                minHeight: '70vh',
+                                background: '#111827',
+                                borderRadius: 8,
+                                padding: 12
+                            }}>
+                                {/* Search Badge - Top */}
+                                {searchQuery && searchQuery.trim() && (
+                                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+                                        <span style={{
+                                            background: 'rgba(34, 197, 94, 0.2)',
+                                            color: '#4ade80',
+                                            border: '1px solid rgba(34, 197, 94, 0.3)',
+                                            padding: '6px 16px',
+                                            borderRadius: 9999,
+                                            fontSize: 13,
+                                            fontWeight: 500,
+                                            letterSpacing: '0.025em',
+                                            boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 8
+                                        }}>
+                                            <Search size={14} />
+                                            Searching for: "{searchQuery.trim()}"
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* Iframe Wrapper - Middle (flex-1 takes remaining space) */}
+                                <div style={{
+                                    flex: 1,
+                                    width: '100%',
+                                    background: 'white',
+                                    borderRadius: 6,
+                                    overflow: 'hidden',
+                                    position: 'relative'
+                                }}>
+                                    <iframe
+                                        src={buildPdfViewerUrl()}
+                                        style={{
+                                            position: 'absolute',
+                                            inset: 0,
+                                            width: '100%',
+                                            height: '100%',
+                                            border: 'none'
+                                        }}
+                                        title="Document Preview"
+                                    />
+                                </div>
+
+                                {/* Fallback Button - Bottom */}
+                                <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}>
+                                    <button
+                                        onClick={() => window.open(doc.fileUrl, '_blank')}
+                                        style={{
+                                            padding: '8px 24px',
+                                            borderRadius: 9999,
+                                            background: '#4f46e5',
+                                            color: 'white',
+                                            border: 'none',
+                                            fontSize: 14,
+                                            fontWeight: 500,
+                                            cursor: 'pointer',
+                                            boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                                            transition: 'all 0.2s',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 8
+                                        }}
+                                        onMouseEnter={e => e.currentTarget.style.background = '#4338ca'}
+                                        onMouseLeave={e => e.currentTarget.style.background = '#4f46e5'}
+                                    >
+                                        <BookOpen size={16} />
+                                        Open PDF in New Tab
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 40, gap: 24 }}>
+                                <div style={{
+                                    width: 80, height: 80, borderRadius: 20,
+                                    background: 'rgba(255,255,255,0.03)',
+                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                }}>
+                                    <FileText size={36} color="#6b7280" />
+                                </div>
+                                <div style={{ textAlign: 'center', maxWidth: 320 }}>
+                                    <h4 style={{ fontSize: 16, fontWeight: 600, color: '#f3f4f6', marginBottom: 8 }}>Preview not available</h4>
+                                    <p style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.6 }}>This file type cannot be previewed in the browser. Download or open it in a new tab to view.</p>
+                                </div>
+                                <button
+                                    onClick={() => window.open(doc.fileUrl, '_blank')}
+                                    style={{
+                                        padding: '10px 24px',
+                                        borderRadius: 8,
+                                        background: 'rgba(129,140,248,0.15)',
+                                        color: '#818cf8',
+                                        border: '1px solid rgba(129,140,248,0.3)',
+                                        fontSize: 13,
+                                        fontWeight: 500,
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 8
+                                    }}
+                                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(129,140,248,0.25)'; e.currentTarget.style.borderColor = 'rgba(129,140,248,0.4)' }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(129,140,248,0.15)'; e.currentTarget.style.borderColor = 'rgba(129,140,248,0.3)' }}
+                                >
+                                    <BookOpen size={16} />
+                                    Open / Download File
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            <style>{`
+        @keyframes fade-in  { from { opacity:0 } to { opacity:1 } }
+        @keyframes slide-up { from { opacity:0; transform:translateY(16px) } to { opacity:1; transform:translateY(0) } }
+      `}</style>
+        </div>
+    )
+}
 
 // ─── Result row ───────────────────────────────────────────────────────────────
 
-function ResultRow({ doc, onSummarize, isSummarizing, activeSummaryId, onToggleSummary, isSummaryVisible, onAskQuestion, chatQuestion, onQuestionChange, chatAnswers, isAsking }) {
+function ResultRow({ doc, onSummarize, isSummarizing, activeSummaryId, onToggleSummary, isSummaryVisible, onAskQuestion, chatQuestion, onQuestionChange, chatAnswers, isAsking, onView, onDelete }) {
     const [hovered, setHovered] = useState(false)
+    const navigate = useNavigate();
 
     // Determine icon based on mimeType/extension
     const getIcon = (mimeType, fileName) => {
@@ -57,6 +353,35 @@ function ResultRow({ doc, onSummarize, isSummarizing, activeSummaryId, onToggleS
                 </a>
 
                 <div style={{ flex: 1, minWidth: 0 }}>
+                    {doc.folderPath && doc.folderPath.length > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 11, color: '#6b7280' }}>📂 In:</span>
+                            {doc.folderPath.map((folder, idx) => (
+                                <React.Fragment key={folder._id}>
+                                    <button
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            // Assuming Dashboard is at '/' and uses a query param or state. 
+                                            // We'll pass it via state to be handled by Dashboard.
+                                            navigate('/', { state: { activeFolderId: folder._id } });
+                                        }}
+                                        style={{
+                                            background: 'none', border: 'none', padding: 0,
+                                            fontSize: 11, color: '#9ca3af', fontFamily: "'DM Mono',monospace",
+                                            cursor: 'pointer', transition: 'all 0.15s',
+                                            textDecoration: 'none'
+                                        }}
+                                        onMouseEnter={e => { e.currentTarget.style.color = '#60a5fa'; e.currentTarget.style.textDecoration = 'underline'; }}
+                                        onMouseLeave={e => { e.currentTarget.style.color = '#9ca3af'; e.currentTarget.style.textDecoration = 'none'; }}
+                                    >
+                                        {folder.name}
+                                    </button>
+                                    {idx < doc.folderPath.length - 1 && <ChevronRight size={10} color="#4b5563" />}
+                                </React.Fragment>
+                            ))}
+                        </div>
+                    )}
                     <a
                         href={doc.fileUrl}
                         target="_blank"
@@ -66,13 +391,13 @@ function ResultRow({ doc, onSummarize, isSummarizing, activeSummaryId, onToggleS
                         {doc.originalName}
                     </a>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 11, color: '#4b5563', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span style={{ fontSize: 11, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 4 }}>
                             <User size={9} />You
                         </span>
-                        <span style={{ fontSize: 11, color: '#374151', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span style={{ fontSize: 11, color: '#9ca3af', display: 'flex', alignItems: 'center', gap: 4 }}>
                             <Clock size={9} />{new Date(doc.createdAt).toLocaleDateString()}
                         </span>
-                        <span style={{ fontSize: 11, color: '#374151', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span style={{ fontSize: 11, color: '#9ca3af', display: 'flex', alignItems: 'center', gap: 4 }}>
                             Size: {formatSize(doc.size)}
                         </span>
                         {doc.tags && doc.tags.length > 0 && (
@@ -91,47 +416,39 @@ function ResultRow({ doc, onSummarize, isSummarizing, activeSummaryId, onToggleS
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    {!doc.aiSummary && !isThisDocSummarizing && (
-                        <button
-                            onClick={() => onSummarize(docId)}
-                            style={{
-                                display: 'flex', alignItems: 'center', gap: 6,
-                                padding: '6px 12px', borderRadius: 6,
-                                background: 'rgba(255,255,255,0.05)',
-                                border: '1px solid rgba(255,255,255,0.1)',
-                                color: '#9ca3af', fontSize: 10,
-                                fontFamily: "'DM Mono',monospace", letterSpacing: '0.05em',
-                                cursor: 'pointer', transition: 'all 0.15s',
-                            }}
-                            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)' }}
-                            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)' }}
-                        >
-                            <Sparkles size={11} /> ✨ Summarize
-                        </button>
-                    )}
+                    <button
+                        onClick={() => onView(doc)}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: 6,
+                            padding: '6px 12px', borderRadius: 6,
+                            background: 'rgba(129,140,248,0.1)',
+                            border: '1px solid rgba(129,140,248,0.2)',
+                            color: '#a5b4fc', fontSize: 10,
+                            fontFamily: "'DM Mono',monospace", letterSpacing: '0.05em',
+                            cursor: 'pointer', transition: 'all 0.15s',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(129,140,248,0.2)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(129,140,248,0.1)'}
+                    >
+                        <Eye size={11} /> View
+                    </button>
 
-                    {doc.aiSummary && !isThisDocSummarizing && (
-                        <button
-                            onClick={() => onToggleSummary(docId)}
-                            style={{
-                                display: 'flex', alignItems: 'center', gap: 6,
-                                padding: '6px 12px', borderRadius: 6,
-                                background: isSummaryVisible ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)',
-                                border: '1px solid rgba(255,255,255,0.08)',
-                                color: isSummaryVisible ? '#f3f4f6' : '#6b7280', fontSize: 10,
-                                fontFamily: "'DM Mono',monospace", letterSpacing: '0.05em',
-                                cursor: 'pointer', transition: 'all 0.15s',
-                            }}
-                        >
-                            {isSummaryVisible ? 'Hide Summary' : 'Show Summary'}
-                        </button>
-                    )}
-
-                    {isThisDocSummarizing && (
-                        <span style={{ fontSize: 10, color: '#4b5563', fontFamily: "'DM Mono',monospace" }}>
-                            Gemini is analyzing...
-                        </span>
-                    )}
+                    <button
+                        onClick={() => onDelete(doc._id || doc.id)}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: 6,
+                            padding: '6px 12px', borderRadius: 6,
+                            background: 'rgba(239,68,68,0.1)',
+                            border: '1px solid rgba(239,68,68,0.2)',
+                            color: '#f87171', fontSize: 10,
+                            fontFamily: "'DM Mono',monospace", letterSpacing: '0.05em',
+                            cursor: 'pointer', transition: 'all 0.15s',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.2)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.3)' }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.2)' }}
+                    >
+                        <Trash2 size={11} /> Delete
+                    </button>
 
                     <span style={{
                         fontSize: 9, fontFamily: "'DM Mono',monospace", letterSpacing: '0.1em',
@@ -145,92 +462,7 @@ function ResultRow({ doc, onSummarize, isSummarizing, activeSummaryId, onToggleS
                 </div>
             </div>
 
-            {/* AI Summary Content */}
-            {doc.aiSummary && isSummaryVisible && (
-                <div style={{
-                    marginLeft: 50, padding: '12px 16px', borderRadius: 10,
-                    background: 'rgba(255,255,255,0.03)',
-                    border: '1px solid rgba(255,255,255,0.06)',
-                    position: 'relative'
-                }}>
-                    <div className="markdown-summary" style={{ fontSize: 11, color: '#9ca3af', lineHeight: 1.5 }}>
-                        <ReactMarkdown components={{
-                            p: ({ node, ...props }) => <p style={{ marginBottom: '8px' }} {...props} />,
-                            ul: ({ node, ...props }) => <ul style={{ listStyleType: 'disc', paddingLeft: '20px', marginBottom: '8px' }} {...props} />,
-                            li: ({ node, ...props }) => <li style={{ marginBottom: '4px' }} {...props} />,
-                            h3: ({ node, ...props }) => <h3 style={{ fontSize: '13px', fontWeight: 'bold', color: '#f3f4f6', marginTop: '12px', marginBottom: '6px' }} {...props} />,
-                            strong: ({ node, ...props }) => <strong style={{ fontWeight: 'bold', color: '#818cf8' }} {...props} />
-                        }}>
-                            {doc.aiSummary}
-                        </ReactMarkdown>
-                    </div>
-                    <div style={{
-                        position: 'absolute', top: -8, right: 10, padding: '2px 8px',
-                        background: '#1f2937', borderRadius: 4, border: '1px solid rgba(255,255,255,0.1)',
-                        fontSize: 8, color: '#6b7280', fontFamily: "'DM Mono',monospace"
-                    }}>AI SUMMARY</div>
-
-                    {/* Chat with Document Q&A Section */}
-                    <div style={{ marginTop: 16, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 16 }}>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                            <input
-                                type="text"
-                                placeholder="Ask a specific question about this document..."
-                                value={chatQuestion[docId] || ''}
-                                onChange={(e) => onQuestionChange(docId, e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter' && !isAsking && (chatQuestion[docId] || '').trim()) {
-                                        onAskQuestion(docId);
-                                    }
-                                }}
-                                style={{
-                                    flex: 1,
-                                    padding: '8px 12px',
-                                    borderRadius: 8,
-                                    background: 'rgba(255,255,255,0.03)',
-                                    border: '1px solid rgba(255,255,255,0.08)',
-                                    color: '#f3f4f6',
-                                    fontSize: 12,
-                                    outline: 'none',
-                                }}
-                            />
-                            <button
-                                onClick={() => onAskQuestion(docId)}
-                                disabled={isAsking || !(chatQuestion[docId] || '').trim()}
-                                style={{
-                                    padding: '8px 16px',
-                                    borderRadius: 8,
-                                    background: (isAsking || !(chatQuestion[docId] || '').trim()) ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.07)',
-                                    border: '1px solid rgba(255,255,255,0.1)',
-                                    color: (isAsking || !(chatQuestion[docId] || '').trim()) ? '#374151' : '#e5e7eb',
-                                    fontSize: 11,
-                                    fontFamily: "'DM Mono',monospace",
-                                    cursor: (isAsking || !(chatQuestion[docId] || '').trim()) ? 'default' : 'pointer',
-                                    transition: 'all 0.15s',
-                                }}
-                            >
-                                {isAsking && activeSummaryId === docId ? 'Thinking...' : 'Ask AI'}
-                            </button>
-                        </div>
-
-                        {chatAnswers[docId] && (
-                            <div style={{ marginTop: 14, padding: '12px', borderRadius: 8, background: 'rgba(129,140,248,0.03)', border: '1px solid rgba(129,140,248,0.1)' }}>
-                                <div className="markdown-summary" style={{ fontSize: 11, color: '#d1d5db', lineHeight: 1.6 }}>
-                                    <ReactMarkdown components={{
-                                        p: ({ node, ...props }) => <p style={{ marginBottom: '8px' }} {...props} />,
-                                        ul: ({ node, ...props }) => <ul style={{ listStyleType: 'disc', paddingLeft: '20px', marginBottom: '8px' }} {...props} />,
-                                        li: ({ node, ...props }) => <li style={{ marginBottom: '4px' }} {...props} />,
-                                        h3: ({ node, ...props }) => <h3 style={{ fontSize: '13px', fontWeight: 'bold', color: '#f3f4f6', marginTop: '12px', marginBottom: '6px' }} {...props} />,
-                                        strong: ({ node, ...props }) => <strong style={{ fontWeight: 'bold', color: '#818cf8' }} {...props} />
-                                    }}>
-                                        {chatAnswers[docId]}
-                                    </ReactMarkdown>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
+            {/* AI Summary Content REMOVED for Privacy */}
         </div>
     )
 }
@@ -262,6 +494,7 @@ function FilterButton({ label, active, onClick }) {
 export default function SearchPageView() {
     const [searchQuery, setSearchQuery] = useState('')
     const [documents, setDocuments] = useState([])
+    const [viewDoc, setViewDoc] = useState(null)
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState(null)
     const [activeFilter, setActiveFilter] = useState('All')
@@ -276,6 +509,14 @@ export default function SearchPageView() {
     const [chatQuestion, setChatQuestion] = useState({});
     const [chatAnswers, setChatAnswers] = useState({});
     const [isAsking, setIsAsking] = useState(false);
+
+    // Clear search results when component mounts (Bug Fix: Prevent ghost deleted files)
+    useEffect(() => {
+        // Clear any stale data when navigating to search page
+        setDocuments([]);
+        setSearchQuery('');
+        setError(null);
+    }, []); // Empty dependency array means this runs once on mount
 
     // Debounced search effect
     useEffect(() => {
@@ -297,7 +538,7 @@ export default function SearchPageView() {
             const token = localStorage.getItem('codec_token')
             if (!token) throw new Error('Not authenticated')
 
-            const url = `http://localhost:5050/api/documents/search?q=${encodeURIComponent(query)}&tags=${encodeURIComponent(tagFilter)}&time=${timeFilter}&privacy=${privacyFilter}`
+            const url = `/api/documents/search?q=${encodeURIComponent(query)}&tags=${encodeURIComponent(tagFilter)}&time=${timeFilter}&privacy=${privacyFilter}`
             const res = await fetch(url, {
                 headers: {
                     'Authorization': 'Bearer ' + token
@@ -322,7 +563,7 @@ export default function SearchPageView() {
         setActiveSummaryId(docId);
         try {
             const token = localStorage.getItem('codec_token');
-            const res = await fetch(`http://localhost:5050/api/documents/${docId}/summarize`, {
+            const res = await fetch(`/api/documents/${docId}/summarize`, {
                 method: 'POST',
                 headers: {
                     Authorization: 'Bearer ' + token,
@@ -359,7 +600,7 @@ export default function SearchPageView() {
         setActiveSummaryId(docId); // Reuse this to track active doc
         try {
             const token = localStorage.getItem('codec_token');
-            const res = await fetch(`http://localhost:5050/api/documents/${docId}/chat`, {
+            const res = await fetch(`/api/documents/${docId}/chat`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -386,6 +627,63 @@ export default function SearchPageView() {
     const handleQuestionChange = (docId, value) => {
         setChatQuestion(prev => ({ ...prev, [docId]: value }));
     };
+
+    const handleDelete = async (documentId) => {
+        // Confirmation prompt
+        const confirmed = window.confirm('Are you sure you want to delete this document? This action cannot be undone.');
+
+        if (!confirmed) return;
+
+        try {
+            const token = localStorage.getItem('codec_token');
+            const res = await fetch(`/api/documents/${documentId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': 'Bearer ' + token
+                }
+            });
+
+            if (res.ok) {
+                // Immediately remove from local state
+                setDocuments(prev => prev.filter(doc => (doc._id || doc.id) !== documentId));
+
+                // Show success message
+                alert('Document deleted successfully!');
+            } else {
+                const data = await res.json();
+                alert(data.message || 'Failed to delete document');
+            }
+        } catch (err) {
+            console.error('Delete error:', err);
+            alert('Network error during deletion');
+        }
+    };
+
+    const handleViewDoc = (doc) => {
+        const baseName = (doc.originalName || doc.fileName || '').toString()
+        const ext = (baseName.split('.').pop() || '').toUpperCase()
+        const type = ['PDF', 'DOCX', 'PNG', 'JPG'].includes(ext)
+            ? ext
+            : (doc.mimeType?.includes('pdf') ? 'PDF' : (doc.mimeType?.includes('presentation') ? 'PPTX' : 'DOCX'))
+
+        // Format file size
+        const formatSize = (bytes) => {
+            if (!bytes) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        setViewDoc({
+            id: doc._id || doc.id,
+            title: baseName.replace(/\.[^/.]+$/, ''),
+            type,
+            size: formatSize(doc.size),
+            fileUrl: doc.fileUrl,
+            aiSummary: doc.aiSummary || ''
+        })
+    }
 
     const filteredDocuments = useMemo(() => {
         if (activeFilter === 'All') return documents
@@ -542,6 +840,8 @@ export default function SearchPageView() {
                                 onQuestionChange={handleQuestionChange}
                                 chatAnswers={chatAnswers}
                                 isAsking={isAsking}
+                                onView={handleViewDoc}
+                                onDelete={handleDelete}
                             />
                         ))}
                     </div>
@@ -561,6 +861,8 @@ export default function SearchPageView() {
                     </div>
                 )}
             </div>
+
+            {viewDoc && <DocumentViewModal doc={viewDoc} onClose={() => setViewDoc(null)} searchQuery={searchQuery} />}
 
             <style>{`
                 @keyframes spin { 100% { transform: rotate(360deg); } }

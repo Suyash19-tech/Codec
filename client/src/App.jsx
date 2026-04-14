@@ -19,7 +19,7 @@ function App() {
     if (token && user) {
       try {
         setIsAuthenticated(true);
-        setUserRole(JSON.parse(user).role || 'user');
+        setUserRole(JSON.parse(user).role || 'Professor');
       } catch (error) {
         console.error('Error parsing stored user data:', error);
         localStorage.removeItem('codec_token');
@@ -30,12 +30,14 @@ function App() {
 
   const handleLogin = (userData) => {
     setIsAuthenticated(true)
-    setUserRole(userData.role || 'user')
+    setUserRole(userData.role || 'Professor')
+    localStorage.setItem('codec_user', JSON.stringify(userData))
   }
 
   const handleSignup = (userData) => {
     setIsAuthenticated(true)
-    setUserRole(userData.role || 'user')
+    setUserRole(userData.role || 'Professor')
+    localStorage.setItem('codec_user', JSON.stringify(userData))
   }
 
   const handleLogout = () => {

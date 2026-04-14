@@ -255,7 +255,7 @@ export default function PublicProfileView() {
         const fetchUser = async () => {
             try {
                 const token = localStorage.getItem('codec_token')
-                const res = await fetch(`http://localhost:5050/api/users/${userId}`, {
+                const res = await fetch(`/api/users/${userId}`, {
                     headers: { Authorization: 'Bearer ' + token }
                 })
                 if (res.ok) {
@@ -275,7 +275,7 @@ export default function PublicProfileView() {
             setIsLoading(true)
             try {
                 const token = localStorage.getItem('codec_token')
-                const url = `http://localhost:5050/api/documents/user/${userId}/public?q=${encodeURIComponent(searchQuery)}`
+                const url = `/api/documents/user/${userId}/public?q=${encodeURIComponent(searchQuery)}`
                 const res = await fetch(url, {
                     headers: { Authorization: 'Bearer ' + token }
                 })
@@ -302,7 +302,7 @@ export default function PublicProfileView() {
         setActiveSummaryId(docId);
         try {
             const token = localStorage.getItem('codec_token');
-            const res = await fetch(`http://localhost:5050/api/documents/${docId}/summarize`, {
+            const res = await fetch(`/api/documents/${docId}/summarize`, {
                 method: 'POST',
                 headers: {
                     Authorization: 'Bearer ' + token,
@@ -339,7 +339,7 @@ export default function PublicProfileView() {
         setActiveSummaryId(docId); // Reuse this to track active doc
         try {
             const token = localStorage.getItem('codec_token');
-            const res = await fetch(`http://localhost:5050/api/documents/${docId}/chat`, {
+            const res = await fetch(`/api/documents/${docId}/chat`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

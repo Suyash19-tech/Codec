@@ -187,7 +187,7 @@ export default function CommunityView() {
                 const token = localStorage.getItem('codec_token')
                 if (!token) return
 
-                const res = await fetch('http://localhost:5050/api/users', {
+                const res = await fetch('/api/users', {
                     headers: { Authorization: 'Bearer ' + token },
                 })
 

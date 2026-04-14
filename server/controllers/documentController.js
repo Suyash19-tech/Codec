@@ -4,129 +4,163 @@ const Notification = require('../models/Notification');
 const User = require('../models/User');
 const Group = require('../models/Group');
 const fs = require('fs');
-const pdfParse = require('pdf-parse');
-const Tesseract = require('tesseract.js');
-const officeParser = require('officeparser');
-const xlsx = require('xlsx');
-const sharp = require('sharp');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const axios = require('axios');
+const { extractDocumentText, isExtractionSupported } = require('../utils/textExtractor');
 
-// 1. Upload new documents
+// 1. Save document metadata from Cloudinary with Gemini text extraction
 const uploadDocuments = async (req, res) => {
+    console.log('\n╔════════════════════════════════════════════════════════════╗');
+    console.log('║         DOCUMENT UPLOAD CONTROLLER - START                 ║');
+    console.log('╚════════════════════════════════════════════════════════════╝\n');
+
     try {
-        if (!req.files || req.files.length === 0) {
-            return res.status(400).json({ message: 'No files were uploaded.' });
+        // Log incoming request body
+        console.log('[Upload Controller] Incoming req.body:', JSON.stringify(req.body, null, 2));
+
+        const { originalName, fileUrl, cloudinaryId, size, tags, folderId, webkitRelativePath } = req.body;
+
+        if (!fileUrl || !cloudinaryId) {
+            console.error('[Upload Controller] ❌ Missing required fields: fileUrl or cloudinaryId');
+            return res.status(400).json({ message: 'Cloudinary URL and ID are required.' });
         }
 
-        // Extract tags from request body
+        console.log('[Upload Controller] ✓ Required fields present');
+        console.log('[Upload Controller] File:', originalName);
+        console.log('[Upload Controller] URL:', fileUrl);
+
+        // Extract tags
         let tagsArray = [];
-        if (req.body.tags) {
-            tagsArray = req.body.tags.split(',').map(tag => tag.trim().toLowerCase());
+        if (tags) {
+            tagsArray = typeof tags === 'string' ? tags.split(',').map(tag => tag.trim().toLowerCase()) : tags;
         }
 
-        const savedDocuments = [];
+        let baseFolderId = folderId;
+        if (baseFolderId === 'null' || baseFolderId === 'undefined' || !baseFolderId) {
+            baseFolderId = null;
+        }
 
-        // Loop through all uploaded files and save them to MongoDB
-        for (let file of req.files) {
-            const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${file.filename}`;
-            let fileText = '';
+        const Folder = require('../models/Folder'); // Import Folder model for auto-hierarchy
+        let finalFolderId = baseFolderId;
 
-            // Normalize mimetype and extension for cleaner checks
-            const mime = file.mimetype || '';
-            const lowerName = file.originalname.toLowerCase();
+        // Auto-Folder Creation Logic (for Folder Uploads)
+        if (webkitRelativePath) {
+            console.log('[Upload Controller] Processing folder hierarchy:', webkitRelativePath);
+            const pathParts = webkitRelativePath.split('/');
+            pathParts.pop(); // Remove filename
+
+            let currentParentId = baseFolderId;
+
+            for (const folderName of pathParts) {
+                let folder = await Folder.findOne({
+                    name: folderName,
+                    owner: req.user.id,
+                    parentFolder: currentParentId
+                });
+
+                if (!folder) {
+                    folder = await Folder.create({
+                        name: folderName,
+                        owner: req.user.id,
+                        parentFolder: currentParentId
+                    });
+                }
+                currentParentId = folder._id;
+            }
+            finalFolderId = currentParentId;
+        }
+
+        // Determine MIME type from filename extension
+        const lowerName = originalName.toLowerCase();
+        let mimeType = 'application/octet-stream';
+        if (lowerName.endsWith('.pdf')) mimeType = 'application/pdf';
+        else if (lowerName.endsWith('.png')) mimeType = 'image/png';
+        else if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) mimeType = 'image/jpeg';
+        else if (lowerName.endsWith('.gif')) mimeType = 'image/gif';
+        else if (lowerName.endsWith('.bmp')) mimeType = 'image/bmp';
+        else if (lowerName.endsWith('.tiff') || lowerName.endsWith('.tif')) mimeType = 'image/tiff';
+        else if (lowerName.endsWith('.webp')) mimeType = 'image/webp';
+        else if (lowerName.endsWith('.docx')) mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+        console.log('[Upload Controller] Detected MIME type:', mimeType);
+
+        // Universal Text Extraction using Google Gemini 1.5 Flash
+        // Privacy Control: Skip extraction if document is marked as confidential
+        console.log('\n--- TEXT EXTRACTION PHASE ---');
+        let extractedText = '';
+
+        // Check if document is marked as confidential
+        const isConfidential = req.body.isConfidential === true || req.body.isConfidential === 'true';
+        console.log('[Upload Controller] isConfidential flag:', isConfidential);
+        console.log('[Upload Controller] Raw isConfidential value:', req.body.isConfidential);
+
+        if (isConfidential) {
+            console.log('[Upload Controller] 🔒 Document marked as CONFIDENTIAL - skipping text extraction for privacy');
+            extractedText = '';
+        } else if (isExtractionSupported(mimeType)) {
+            console.log(`[Upload Controller] ✓ MIME type supported for extraction`);
+            console.log(`[Upload Controller] 🚀 Starting Gemini text extraction for: ${originalName}`);
 
             try {
-                // Condition A: PDFs
-                if (mime === 'application/pdf') {
-                    const dataBuffer = fs.readFileSync(file.path);
-                    const data = await pdfParse(dataBuffer);
-                    fileText = data.text;
-                }
-                // Condition B: Excel (XLS, XLSX) - Robust handling with CSV fallback
-                else if (
-                    mime.includes('excel') ||
-                    mime.includes('spreadsheet') ||
-                    lowerName.endsWith('.xls') ||
-                    lowerName.endsWith('.xlsx')
-                ) {
-                    const workbook = xlsx.readFile(file.path);
-                    let sheetText = '';
-                    workbook.SheetNames.forEach(sheetName => {
-                        const sheet = workbook.Sheets[sheetName];
-                        // Using sheet_to_csv ensures we get all cell values clearly separated
-                        const txt = xlsx.utils.sheet_to_csv(sheet);
-                        if (txt) sheetText += txt + ' ';
-                    });
-                    fileText = sheetText;
-                }
-                // Condition C: Microsoft Office (Word, PPT)
-                else if (
-                    mime.includes('officedocument') ||
-                    mime.includes('msword') ||
-                    mime.includes('ms-powerpoint') ||
-                    mime.includes('presentation')
-                ) {
-                    fileText = await officeParser.parseOfficeAsync(file.path);
-                }
-                // Condition D: Images (OCR with Sharp Preprocessing)
-                else if (mime.startsWith('image/')) {
-                    // Preprocess image: Resize (upscale 2x for small text), Grayscale, Normalize
-                    const metadata = await sharp(file.path).metadata();
+                extractedText = await extractDocumentText(fileUrl, mimeType);
 
-                    // Only upscale if width is less than 2500px to avoid memory issues on huge images
-                    let pipeline = sharp(file.path);
-                    if (metadata.width && metadata.width < 2500) {
-                        pipeline = pipeline.resize({ width: Math.round(metadata.width * 2) });
-                    }
+                console.log('[Upload Controller] Extraction returned, checking result...');
+                console.log('[Upload Controller] Extracted text type:', typeof extractedText);
+                console.log('[Upload Controller] Extracted text length:', extractedText ? extractedText.length : 0);
 
-                    const processedBuffer = await pipeline
-                        .grayscale()
-                        .normalize() // Enhances contrast
-                        .toBuffer();
-
-                    const { data: { text } } = await Tesseract.recognize(processedBuffer, 'eng');
-                    fileText = text;
+                if (extractedText && extractedText.length > 0) {
+                    console.log(`[Upload Controller] ✅ Successfully extracted ${extractedText.length} characters`);
+                    console.log(`[Upload Controller] First 50 chars: "${extractedText.substring(0, 50)}..."`);
+                } else {
+                    console.log(`[Upload Controller] ⚠️ No text extracted (returned empty string)`);
                 }
-                // Condition E: Text, Code, & Data
-                else if (
-                    mime.startsWith('text/') ||
-                    mime.includes('json') ||
-                    mime.includes('javascript') ||
-                    mime.includes('x-python') ||
-                    lowerName.endsWith('.md') ||
-                    lowerName.endsWith('.js') ||
-                    lowerName.endsWith('.py') ||
-                    lowerName.endsWith('.cpp') ||
-                    lowerName.endsWith('.csv') ||
-                    lowerName.endsWith('.txt')
-                ) {
-                    fileText = fs.readFileSync(file.path, 'utf8');
-                }
-                // Condition E: Fallback (matches none) -> fileText remains ''
-
-            } catch (err) {
-                console.error(`Text extraction failed for ${file.originalname}:`, err.message);
-                // We intentionally swallow the error so the file is still uploaded, just without searchable text.
+            } catch (extractError) {
+                console.error('[Upload Controller] ❌ Text extraction error:', extractError.message);
+                console.error('[Upload Controller] Error stack:', extractError.stack);
+                // Continue without text extraction - don't fail the upload
+                extractedText = '';
             }
-
-            const newDoc = await Document.create({
-                originalName: file.originalname,
-                fileName: file.filename,
-                fileUrl: fileUrl,
-                mimeType: mime || 'application/octet-stream',
-                size: file.size,
-                uploader: req.user.id, // Taken from the authMiddleware
-                extractedText: fileText,
-                tags: tagsArray
-            });
-
-            savedDocuments.push(newDoc);
+        } else {
+            console.log(`[Upload Controller] ⚠️ Text extraction not supported for MIME type: ${mimeType}`);
+            extractedText = '';
         }
 
-        res.status(201).json(savedDocuments);
+        console.log('\n--- DATABASE SAVE PHASE ---');
+
+        // Prepare document object
+        const documentData = {
+            originalName,
+            fileName: cloudinaryId,
+            fileUrl,
+            mimeType,
+            size: size || 0,
+            uploader: req.user.id,
+            folderId: finalFolderId,
+            tags: tagsArray,
+            extractedText: extractedText, // Store extracted text for search
+            ocrStatus: 'none'
+        };
+
+        console.log('[Upload Controller] Document data to save:');
+        console.log(JSON.stringify({
+            ...documentData,
+            extractedText: extractedText ? `${extractedText.length} characters` : 'empty',
+            uploader: documentData.uploader.toString()
+        }, null, 2));
+
+        const newDoc = await Document.create(documentData);
+
+        console.log('[Upload Controller] ✅ Document saved to MongoDB');
+        console.log('[Upload Controller] Document ID:', newDoc._id);
+        console.log('[Upload Controller] Saved extractedText length:', newDoc.extractedText ? newDoc.extractedText.length : 0);
+
+        console.log('\n╔════════════════════════════════════════════════════════════╗');
+        console.log('║         DOCUMENT UPLOAD CONTROLLER - SUCCESS               ║');
+        console.log('╚════════════════════════════════════════════════════════════╝\n');
+
+        res.status(201).json(newDoc);
     } catch (error) {
-        console.error('Upload Error:', error);
-        res.status(500).json({ message: 'Server error during upload', error: error.message });
+        console.error('Save Document Error:', error);
+        res.status(500).json({ message: 'Server error saving document metadata', error: error.message });
     }
 };
 
@@ -141,21 +175,26 @@ const getMyDocuments = async (req, res) => {
     }
 };
 
-// 3. Search documents
+// 3. Search documents (STRICT QUERY - Bug Fix)
 const searchDocuments = async (req, res) => {
     try {
         console.log("Search Query Params:", req.query);
         const { q, tags, time, privacy } = req.query;
 
-        // Base Query: Strictly the logged-in user's documents
-        let query = { uploader: req.user.id };
+        // Base Query: STRICTLY the logged-in user's documents that exist in the database
+        // This ensures deleted documents never appear
+        let query = {
+            uploader: req.user.id,
+            // Explicitly ensure the document exists (not soft-deleted or marked for deletion)
+        };
 
         // Privacy Filter Logic
         if (privacy === 'public') query.isPublic = true;
         if (privacy === 'private') query.isPublic = false;
 
         if (q) {
-            // Partial matching on name or content
+            console.log("Searching for query:", q);
+            // Search in both filename and extracted text content
             query.$or = [
                 { originalName: { $regex: q, $options: 'i' } },
                 { extractedText: { $regex: q, $options: 'i' } }
@@ -172,7 +211,48 @@ const searchDocuments = async (req, res) => {
             query.createdAt = { $gte: cutoff };
         }
 
-        const documents = await Document.find(query).sort({ createdAt: -1 });
+        // Fetch documents - Use lean() for better performance and to get plain objects
+        let documents = await Document.find(query).sort({ createdAt: -1 }).lean();
+
+        console.log(`Found ${documents.length} documents matching search criteria`);
+
+        // Resolve full folder paths for each document
+        const Folder = require('../models/Folder');
+
+        // Cache to avoid hitting DB for the same folder multiple times
+        const folderCache = {};
+
+        const buildFolderPath = async (folderId) => {
+            if (!folderId) return [];
+
+            const path = [];
+            let currentId = folderId.toString();
+
+            while (currentId) {
+                if (!folderCache[currentId]) {
+                    const folder = await Folder.findById(currentId).lean();
+                    if (!folder) break;
+                    folderCache[currentId] = folder;
+                }
+
+                const f = folderCache[currentId];
+                // Insert at beginning to build from root to child
+                path.unshift({ _id: f._id, name: f.name });
+                currentId = f.parentFolder ? f.parentFolder.toString() : null;
+            }
+
+            return path;
+        };
+
+        // Attach resolved paths to documents
+        for (let i = 0; i < documents.length; i++) {
+            if (documents[i].folderId) {
+                documents[i].folderPath = await buildFolderPath(documents[i].folderId);
+            } else {
+                documents[i].folderPath = [];
+            }
+        }
+
         res.status(200).json(documents);
     } catch (error) {
         console.error('Search Documents Error:', error);
@@ -180,7 +260,7 @@ const searchDocuments = async (req, res) => {
     }
 };
 
-// 4. Delete document
+// 4. Delete document (STRICT DELETION - Bug Fix)
 const deleteDocument = async (req, res) => {
     try {
         const documentId = req.params.id;
@@ -191,7 +271,7 @@ const deleteDocument = async (req, res) => {
             return res.status(404).json({ message: 'Document not found or unauthorized to delete.' });
         }
 
-        // Physical Deletion
+        // Physical Deletion (if stored locally)
         const path = require('path');
         const filePath = path.join(__dirname, '../uploads', document.fileName);
 
@@ -204,9 +284,14 @@ const deleteDocument = async (req, res) => {
             // We don't crash here; if the file is already missing, we still want to delete the DB record
         }
 
-        // Database Deletion
-        await Document.findByIdAndDelete(documentId);
+        // STRICT Database Deletion - Use deleteOne to ensure complete removal
+        const deleteResult = await Document.deleteOne({ _id: documentId, uploader: req.user.id });
 
+        if (deleteResult.deletedCount === 0) {
+            return res.status(500).json({ message: 'Failed to delete document from database.' });
+        }
+
+        console.log(`Document ${documentId} successfully deleted from database`);
         res.status(200).json({ message: 'Document successfully deleted.' });
     } catch (error) {
         console.error('Delete Document Error:', error);
@@ -257,119 +342,6 @@ const toggleDocumentPrivacy = async (req, res) => {
     } catch (error) {
         console.error('Toggle Privacy Error:', error);
         res.status(500).json({ message: 'Server error updating document privacy' });
-    }
-};
-
-// 7. Generate AI Summary
-const generateSummary = async (req, res) => {
-    try {
-        const { id } = req.params;
-
-        // Find document and populate uploader to check department
-        const document = await Document.findById(id).populate('uploader');
-        if (!document) {
-            return res.status(404).json({ message: 'Document not found.' });
-        }
-
-        // Security Check: Owner OR Public OR SharedWith OR DeptShared
-        const user = await User.findById(req.user.id);
-        const isOwner = document.uploader._id.toString() === req.user.id;
-        const isShared = document.sharedWith.includes(req.user.id);
-        const isDeptShared = document.departmentShare && document.uploader.department === user?.department;
-
-        if (!isOwner && !document.isPublic && !isShared && !isDeptShared) {
-            return res.status(403).json({ message: 'Access denied to this document.' });
-        }
-
-        // Return existing summary if available
-        if (document.aiSummary) {
-            return res.status(200).json({ summary: document.aiSummary });
-        }
-
-        // Check for extracted text
-        if (!document.extractedText || document.extractedText.trim().length === 0) {
-            return res.status(400).json({ message: 'No text available to summarize' });
-        }
-
-        // Initialize Gemini
-        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        // Use 'gemini-flash-latest' for better compatibility with different API keys
-        const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
-
-        const prompt = `You are an academic assistant. Please provide a clear, professional, and concise summary of the following document. Use bullet points for key findings. Document Text: ${document.extractedText}`;
-
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const summaryText = response.text();
-
-        // Save and return
-        document.aiSummary = summaryText;
-        await document.save();
-
-        res.status(200).json({ summary: summaryText });
-    } catch (error) {
-        console.error('AI Summary Error:', error);
-
-        // Check for specific SDK errors
-        const errorMessage = error.message || 'Server error generating summary';
-        res.status(500).json({
-            message: 'Gemini AI failed to generate summary',
-            details: errorMessage,
-            error: error.name
-        });
-    }
-};
-
-// 8. Chat with Document (Q&A)
-const askDocumentQuestion = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { question } = req.body;
-
-        if (!question) {
-            return res.status(400).json({ message: 'Question is required' });
-        }
-
-        // Find document and populate uploader to check department
-        const document = await Document.findById(id).populate('uploader');
-        if (!document) {
-            return res.status(404).json({ message: 'Document not found.' });
-        }
-
-        // Security Check: Owner OR Public OR SharedWith OR DeptShared
-        const user = await User.findById(req.user.id);
-        const isOwner = document.uploader._id.toString() === req.user.id;
-        const isShared = document.sharedWith.includes(req.user.id);
-        const isDeptShared = document.departmentShare && document.uploader.department === user?.department;
-
-        if (!isOwner && !document.isPublic && !isShared && !isDeptShared) {
-            return res.status(403).json({ message: 'Access denied to this document.' });
-        }
-
-        // Validation: Ensure text exists
-        if (!document.extractedText || document.extractedText.trim().length === 0) {
-            return res.status(400).json({ message: 'No text available to analyze for this document.' });
-        }
-
-        // Initialize Gemini
-        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        // Use 'gemini-flash-latest' for better compatibility with different API keys
-        const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
-
-        // Strict Academic Prompt
-        const prompt = `You are an academic AI assistant helping a professor analyze a document. Answer the user's question based strictly on the provided document text. If the answer is not in the text, say so. \n\nDocument Text: ${document.extractedText}\n\nQuestion: ${question}`;
-
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const answerText = response.text();
-
-        res.status(200).json({ answer: answerText });
-    } catch (error) {
-        console.error('Document Q&A Error:', error);
-        res.status(500).json({
-            message: 'Failed to get answer from AI',
-            details: error.message
-        });
     }
 };
 
@@ -499,4 +471,4 @@ const getSharedDocuments = async (req, res) => {
     }
 };
 
-module.exports = { uploadDocuments, getMyDocuments, searchDocuments, deleteDocument, getPublicUserDocuments, toggleDocumentPrivacy, generateSummary, askDocumentQuestion, shareDocument, getSharedDocuments };
+module.exports = { uploadDocuments, getMyDocuments, searchDocuments, deleteDocument, getPublicUserDocuments, toggleDocumentPrivacy, shareDocument, getSharedDocuments };

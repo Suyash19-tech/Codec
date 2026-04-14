@@ -35,7 +35,7 @@ function GroupDetails({ group, allUsers, onUpdate, onDelete, onClose }) {
         const token = localStorage.getItem('codec_token')
         try {
             // RULE 4: NETWORK REQUIREMENTS (Headers & Payload)
-            const res = await fetch(`http://localhost:5050/api/groups/${group._id}/members`, {
+            const res = await fetch(`/api/groups/${group._id}/members`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -65,7 +65,7 @@ function GroupDetails({ group, allUsers, onUpdate, onDelete, onClose }) {
         const token = localStorage.getItem('codec_token')
         try {
             // RULE 4: NETWORK REQUIREMENTS (Headers & Payload)
-            const res = await fetch(`http://localhost:5050/api/groups/${group._id}/admins`, {
+            const res = await fetch(`/api/groups/${group._id}/admins`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -93,7 +93,7 @@ function GroupDetails({ group, allUsers, onUpdate, onDelete, onClose }) {
         const token = localStorage.getItem('codec_token')
         try {
             // RULE 4: NETWORK REQUIREMENTS (Headers)
-            const res = await fetch(`http://localhost:5050/api/groups/${group._id}`, {
+            const res = await fetch(`/api/groups/${group._id}`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': 'Bearer ' + token
@@ -249,8 +249,8 @@ export default function ManageGroups() {
             const token = localStorage.getItem('codec_token')
             try {
                 const [groupsRes, usersRes] = await Promise.all([
-                    fetch('http://localhost:5050/api/groups', { headers: { Authorization: 'Bearer ' + token } }),
-                    fetch('http://localhost:5050/api/users', { headers: { Authorization: 'Bearer ' + token } })
+                    fetch('/api/groups', { headers: { Authorization: 'Bearer ' + token } }),
+                    fetch('/api/users', { headers: { Authorization: 'Bearer ' + token } })
                 ])
                 if (groupsRes.ok) {
                     const data = await groupsRes.json();
@@ -276,7 +276,7 @@ export default function ManageGroups() {
 
         const token = localStorage.getItem('codec_token')
         try {
-            const res = await fetch('http://localhost:5050/api/groups', {
+            const res = await fetch('/api/groups', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

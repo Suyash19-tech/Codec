@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Upload, Search, Users, LogOut, Cpu, UserCircle, Bell, CheckCircle, Share2, Trash2 } from 'lucide-react'
 import MyUploadsView from './MyUploadsView'
 import SearchPageView from './SearchPageView'
@@ -18,15 +18,27 @@ const NAV = [
 
 export default function Dashboard({ userRole }) {
   const navigate = useNavigate()
-  const [view, setView] = useState('uploads')
+  const location = useLocation()
+
+  // Extract state if coming from Deep Search navigation
+  const initialState = location.state || {}
+
+  const [view, setView] = useState(initialState.activeFolderId ? 'uploads' : 'uploads')
   const [notifications, setNotifications] = useState([])
   const [showNotifs, setShowNotifs] = useState(false)
+
+  // Clear state so it doesn't persist on subsequent local navigations
+  useEffect(() => {
+    if (initialState.activeFolderId) {
+      navigate('.', { replace: true, state: {} })
+    }
+  }, [initialState.activeFolderId, navigate])
 
   const fetchNotifications = useCallback(async () => {
     try {
       const token = localStorage.getItem('codec_token')
       if (!token) return
-      const res = await fetch('http://localhost:5050/api/notifications', {
+      const res = await fetch('/api/notifications', {
         headers: { Authorization: 'Bearer ' + token }
       })
       if (res.ok) {
@@ -47,7 +59,7 @@ export default function Dashboard({ userRole }) {
   const markRead = async (id) => {
     try {
       const token = localStorage.getItem('codec_token')
-      await fetch(`http://localhost:5050/api/notifications/${id}/read`, {
+      await fetch(`/api/notifications/${id}/read`, {
         method: 'PATCH',
         headers: { Authorization: 'Bearer ' + token }
       })
@@ -61,7 +73,7 @@ export default function Dashboard({ userRole }) {
     e.stopPropagation();
     try {
       const token = localStorage.getItem('codec_token')
-      const res = await fetch(`http://localhost:5050/api/notifications/${id}`, {
+      const res = await fetch(`/api/notifications/${id}`, {
         method: 'DELETE',
         headers: { Authorization: 'Bearer ' + token }
       })
@@ -89,7 +101,7 @@ export default function Dashboard({ userRole }) {
   }, [navigate])
 
   const renderView = () => {
-    if (view === 'uploads') return <MyUploadsView userRole={userRole} />
+    if (view === 'uploads') return <MyUploadsView userRole={userRole} initialFolderId={initialState.activeFolderId || null} />
     if (view === 'search') return <SearchPageView />
     if (view === 'community') return <CommunityView />
     if (view === 'profile') return <ProfileView />
@@ -128,7 +140,7 @@ export default function Dashboard({ userRole }) {
             </div>
             <span style={{ fontSize: 15, fontWeight: 700, color: '#f9fafb', letterSpacing: '-0.3px' }}>Codec</span>
           </div>
-          <p style={{ fontSize: 9, fontFamily: "'DM Mono', monospace", color: '#374151', letterSpacing: '0.18em', paddingLeft: 36 }}>
+          <p style={{ fontSize: 9, fontFamily: "'DM Mono', monospace", color: '#6b7280', letterSpacing: '0.18em', paddingLeft: 36 }}>
             RGIPT · REPOSITORY
           </p>
         </div>
@@ -138,7 +150,7 @@ export default function Dashboard({ userRole }) {
           <button
             onClick={() => setShowNotifs(!showNotifs)}
             style={{
-              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              width: '100%', display: 'flex', alignItems: 'center', justifySpaceBetween: 'space-between',
               padding: '8px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.04)',
               border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer', transition: 'all 0.15s'
             }}
@@ -146,8 +158,8 @@ export default function Dashboard({ userRole }) {
             onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <Bell size={14} color={unreadCount > 0 ? '#f87171' : '#6b7280'} />
-              <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 500 }}>Alerts</span>
+              <Bell size={14} color={unreadCount > 0 ? '#f87171' : '#9ca3af'} />
+              <span style={{ fontSize: 12, color: '#d1d5db', fontWeight: 500 }}>Alerts</span>
             </div>
             {unreadCount > 0 && (
               <span style={{
@@ -164,8 +176,8 @@ export default function Dashboard({ userRole }) {
               borderRadius: 12, boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
               maxHeight: 300, overflowY: 'auto', padding: '12px'
             }}>
-              <p style={{ fontSize: 10, color: '#374151', fontFamily: "'DM Mono',monospace", marginBottom: 10, letterSpacing: '0.1em' }}>NOTIFICATIONS</p>
-              {notifications.length === 0 ? <p style={{ fontSize: 11, color: '#4b5563', textAlign: 'center', padding: '20px 0' }}>No notifications</p> :
+              <p style={{ fontSize: 10, color: '#6b7280', fontFamily: "'DM Mono',monospace", marginBottom: 10, letterSpacing: '0.1em' }}>NOTIFICATIONS</p>
+              {notifications.length === 0 ? <p style={{ fontSize: 11, color: '#9ca3af', textAlign: 'center', padding: '20px 0' }}>No notifications</p> :
                 notifications.map(n => (
                   <div
                     key={n._id}
@@ -177,16 +189,16 @@ export default function Dashboard({ userRole }) {
                       cursor: n.isRead ? 'default' : 'pointer', transition: 'all 0.15s'
                     }}
                   >
-                    <p style={{ fontSize: 12, color: n.isRead ? '#6b7280' : '#e5e7eb', marginBottom: 4, lineHeight: 1.4 }}>{n.message}</p>
+                    <p style={{ fontSize: 12, color: n.isRead ? '#9ca3af' : '#e5e7eb', marginBottom: 4, lineHeight: 1.4 }}>{n.message}</p>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 9, color: '#374151' }}>{new Date(n.createdAt).toLocaleDateString()}</span>
+                      <span style={{ fontSize: 9, color: '#6b7280' }}>{new Date(n.createdAt).toLocaleDateString()}</span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         {!n.isRead && <CheckCircle size={10} color="#4ade80" />}
                         <button
                           onClick={(e) => deleteNotif(e, n._id)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center', color: '#374151' }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center', color: '#6b7280' }}
                           onMouseEnter={e => e.currentTarget.style.color = '#f87171'}
-                          onMouseLeave={e => e.currentTarget.style.color = '#374151'}
+                          onMouseLeave={e => e.currentTarget.style.color = '#6b7280'}
                         >
                           <Trash2 size={10} />
                         </button>
@@ -202,7 +214,7 @@ export default function Dashboard({ userRole }) {
         <div style={{ padding: '12px 24px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           <span style={{
             fontSize: 9, fontFamily: "'DM Mono', monospace",
-            color: '#6b7280', letterSpacing: '0.14em',
+            color: '#9ca3af', letterSpacing: '0.14em',
             border: '1px solid rgba(255,255,255,0.07)',
             background: 'rgba(255,255,255,0.03)',
             padding: '3px 10px', borderRadius: 4,
@@ -223,13 +235,13 @@ export default function Dashboard({ userRole }) {
                 padding: '9px 12px', borderRadius: 8, border: 'none',
                 background: active ? 'rgba(255,255,255,0.07)' : 'transparent',
                 borderLeft: active ? '2px solid rgba(255,255,255,0.35)' : '2px solid transparent',
-                color: active ? '#f9fafb' : '#4b5563',
+                color: active ? '#f9fafb' : '#9ca3af',
                 fontSize: 13, cursor: 'pointer',
                 transition: 'all 0.15s',
                 textAlign: 'left',
               }}
-                onMouseEnter={e => { if (!active) { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = '#9ca3af' } }}
-                onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#4b5563' } }}
+                onMouseEnter={e => { if (!active) { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = '#d1d5db' } }}
+                onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#9ca3af' } }}
               >
                 <Icon size={14} />
                 {label}
@@ -246,11 +258,11 @@ export default function Dashboard({ userRole }) {
             padding: '9px 12px', borderRadius: 8, border: 'none',
             background: view === 'profile' ? 'rgba(255,255,255,0.07)' : 'transparent',
             borderLeft: view === 'profile' ? '2px solid rgba(255,255,255,0.35)' : '2px solid transparent',
-            color: view === 'profile' ? '#f9fafb' : '#4b5563',
+            color: view === 'profile' ? '#f9fafb' : '#9ca3af',
             fontSize: 13, cursor: 'pointer', transition: 'all 0.15s', textAlign: 'left',
           }}
-            onMouseEnter={e => { if (view !== 'profile') { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = '#9ca3af' } }}
-            onMouseLeave={e => { if (view !== 'profile') { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#4b5563' } }}
+            onMouseEnter={e => { if (view !== 'profile') { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = '#d1d5db' } }}
+            onMouseLeave={e => { if (view !== 'profile') { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#9ca3af' } }}
           >
             <UserCircle size={14} /> Profile
           </button>
@@ -258,11 +270,11 @@ export default function Dashboard({ userRole }) {
           <button onClick={handleLogout} style={{
             width: '100%', display: 'flex', alignItems: 'center', gap: 11,
             padding: '9px 12px', borderRadius: 8, border: 'none',
-            background: 'transparent', color: '#374151',
+            background: 'transparent', color: '#6b7280',
             fontSize: 13, cursor: 'pointer', transition: 'all 0.15s',
           }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,100,100,0.07)'; e.currentTarget.style.color = '#9ca3af' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#374151' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,100,100,0.07)'; e.currentTarget.style.color = '#d1d5db' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#6b7280' }}
           >
             <LogOut size={14} /> Sign out
           </button>

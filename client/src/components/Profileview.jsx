@@ -69,7 +69,7 @@ export default function ProfileView() {
                 const token = localStorage.getItem('codec_token')
                 if (!token) return
 
-                const res = await fetch('http://localhost:5050/api/users/me', {
+                const res = await fetch('/api/users/me', {
                     headers: { Authorization: 'Bearer ' + token },
                 })
 
@@ -95,7 +95,7 @@ export default function ProfileView() {
     const update = (key) => async (val) => {
         try {
             const token = localStorage.getItem('codec_token')
-            const res = await fetch('http://localhost:5050/api/users/me', {
+            const res = await fetch('/api/users/me', {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
