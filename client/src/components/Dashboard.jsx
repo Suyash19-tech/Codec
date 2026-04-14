@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Upload, Search, Users, LogOut, Cpu, UserCircle, Bell, CheckCircle, Share2, Trash2 } from 'lucide-react'
+import apiClient from '../api/axios'
 import MyUploadsView from './MyUploadsView'
 import SearchPageView from './SearchPageView'
 import CommunityView from './CommunityView'
@@ -36,15 +37,8 @@ export default function Dashboard({ userRole }) {
 
   const fetchNotifications = useCallback(async () => {
     try {
-      const token = localStorage.getItem('codec_token')
-      if (!token) return
-      const res = await fetch('/api/notifications', {
-        headers: { Authorization: 'Bearer ' + token }
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setNotifications(data)
-      }
+      const { data } = await apiClient.get('/api/notifications')
+      setNotifications(data)
     } catch (err) {
       console.error("Notif fetch error", err)
     }
@@ -58,11 +52,7 @@ export default function Dashboard({ userRole }) {
 
   const markRead = async (id) => {
     try {
-      const token = localStorage.getItem('codec_token')
-      await fetch(`/api/notifications/${id}/read`, {
-        method: 'PATCH',
-        headers: { Authorization: 'Bearer ' + token }
-      })
+      await apiClient.patch(`/api/notifications/${id}/read`)
       setNotifications(prev => prev.map(n => n._id === id ? { ...n, isRead: true } : n))
     } catch (err) {
       console.error("Mark read error", err)
@@ -72,14 +62,8 @@ export default function Dashboard({ userRole }) {
   const deleteNotif = async (e, id) => {
     e.stopPropagation();
     try {
-      const token = localStorage.getItem('codec_token')
-      const res = await fetch(`/api/notifications/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: 'Bearer ' + token }
-      })
-      if (res.ok) {
-        setNotifications(prev => prev.filter(n => n._id !== id))
-      }
+      await apiClient.delete(`/api/notifications/${id}`)
+      setNotifications(prev => prev.filter(n => n._id !== id))
     } catch (err) {
       console.error("Delete notif error", err)
     }

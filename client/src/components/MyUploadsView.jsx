@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import axios from 'axios'
+import apiClient from '../api/axios'
 import {
     Upload, FileText, Image as ImageIcon, BookOpen,
     Trash2, Sparkles, Eye, EyeOff, X, Cpu,
