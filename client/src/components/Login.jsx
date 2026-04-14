@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, ShieldCheck, ArrowRight, Loader2, UserPlus, LogIn, KeyRound } from 'lucide-react';
+import apiClient from '../api/axios';
 
 const Login = ({ onLogin }) => {
   const navigate = useNavigate();
@@ -32,21 +33,16 @@ const Login = ({ onLogin }) => {
     e.preventDefault();
     setIsLoading(true); setError('');
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${apiUrl}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Login failed');
+      const { data } = await apiClient.post('/api/auth/login', { email, password });
 
       localStorage.setItem('codec_token', data.token);
       localStorage.setItem('codec_user', JSON.stringify(data.user));
       localStorage.setItem('codec_user_id', data.user._id);
       if (onLogin) onLogin(data.user);
       navigate('/dashboard');
-    } catch (err) { setError(err.message); }
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Login failed');
+    }
     finally { setIsLoading(false); }
   };
 
@@ -55,19 +51,12 @@ const Login = ({ onLogin }) => {
     e.preventDefault();
     setIsLoading(true); setError('');
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${apiUrl}/api/auth/signup-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || 'Failed to send OTP');
-      }
+      await apiClient.post('/api/auth/signup-otp', { email });
       setStep(2);
       setMessage('Verification code sent to email');
-    } catch (err) { setError(err.message); }
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Failed to send OTP');
+    }
     finally { setIsLoading(false); }
   };
 
@@ -75,20 +64,15 @@ const Login = ({ onLogin }) => {
     e.preventDefault();
     setIsLoading(true); setError('');
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${apiUrl}/api/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, otp, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Signup failed');
+      const { data } = await apiClient.post('/api/auth/register', { email, otp, password });
 
       localStorage.setItem('codec_token', data.token);
       localStorage.setItem('codec_user', JSON.stringify(data.user));
       if (onLogin) onLogin(data.user);
       navigate('/dashboard');
-    } catch (err) { setError(err.message); }
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Signup failed');
+    }
     finally { setIsLoading(false); }
   };
 
@@ -97,19 +81,12 @@ const Login = ({ onLogin }) => {
     e.preventDefault();
     setIsLoading(true); setError('');
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${apiUrl}/api/auth/forgot-password-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || 'Failed to send reset code');
-      }
+      await apiClient.post('/api/auth/forgot-password-otp', { email });
       setStep(2);
       setMessage('Reset code sent to email');
-    } catch (err) { setError(err.message); }
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Failed to send reset code');
+    }
     finally { setIsLoading(false); }
   };
 
@@ -117,19 +94,12 @@ const Login = ({ onLogin }) => {
     e.preventDefault();
     setIsLoading(true); setError('');
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${apiUrl}/api/auth/reset-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, otp, newPassword: password }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || 'Reset failed');
-      }
+      await apiClient.post('/api/auth/reset-password', { email, otp, newPassword: password });
       setMessage('Password reset successful! Please log in.');
       setTimeout(() => switchMode('login'), 2000);
-    } catch (err) { setError(err.message); }
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Reset failed');
+    }
     finally { setIsLoading(false); }
   };
 

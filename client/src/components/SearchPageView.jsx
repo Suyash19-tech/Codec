@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { useNavigate } from 'react-router-dom'
 import { Search, FileText, Image as ImageIcon, BookOpen, Clock, User, ScanSearch, X, Loader, Sparkles, Eye, MessageSquare, Send, ChevronRight, Trash2 } from 'lucide-react'
+import apiClient from '../api/axios'
 
 const IMAGE_TYPES = ['PNG', 'JPG', 'JPEG', 'GIF', 'WEBP', 'SVG']
 const PDF_TYPES = ['PDF']
@@ -535,23 +536,12 @@ export default function SearchPageView() {
         setError(null)
 
         try {
-            const token = localStorage.getItem('codec_token')
-            if (!token) throw new Error('Not authenticated')
-
             const url = `/api/documents/search?q=${encodeURIComponent(query)}&tags=${encodeURIComponent(tagFilter)}&time=${timeFilter}&privacy=${privacyFilter}`
-            const res = await fetch(url, {
-                headers: {
-                    'Authorization': 'Bearer ' + token
-                }
-            })
-
-            if (!res.ok) throw new Error('Search failed')
-
-            const data = await res.json()
+            const { data } = await apiClient.get(url)
             setDocuments(Array.isArray(data) ? data : [])
         } catch (err) {
             console.error('Search error:', err)
-            setError('Failed to fetch results')
+            setError(err.response?.data?.message || 'Failed to fetch results')
             setDocuments([])
         } finally {
             setIsLoading(false)
@@ -562,311 +552,282 @@ export default function SearchPageView() {
         setIsSummarizing(true);
         setActiveSummaryId(docId);
         try {
-            const token = localStorage.getItem('codec_token');
-            const res = await fetch(`/api/documents/${docId}/summarize`, {
-                method: 'POST',
-                headers: {
-                    Authorization: 'Bearer ' + token,
-                },
-            });
-            const data = await res.json();
-            if (res.ok) {
-                setDocuments(prev => prev.map(doc => {
-                    const id = doc._id || doc.id;
-                    return id === docId ? { ...doc, aiSummary: data.summary } : doc;
-                }));
-                setVisibleSummaries(prev => ({ ...prev, [docId]: true }));
-            } else {
-                alert(data.message || 'Summarization failed');
-            }
+            const { data } = await apiClient.post(`/api/documents/${docId}/summarize`);
+            setDocuments(prev => prev.map(doc => {
+                const id = doc._id || doc.id;
+                return id === docId ? { ...doc, aiSummary: data.summary } : doc;
+            }));
+            setVisibleSummaries(prev => ({ ...prev, [docId]: true }));
         } catch (err) {
-            console.error('Summary error:', err);
-            alert('Network error during summarization');
-        } finally {
-            setIsSummarizing(false);
-            setActiveSummaryId(null);
+            alert(err.response?.data?.message || 'Summarization failed');
         }
-    };
+    } catch (err) {
+        console.error('Summary error:', err);
+        alert('Network error during summarization');
+    } finally {
+        setIsSummarizing(false);
+        setActiveSummaryId(null);
+    }
+};
 
-    const toggleSummary = (docId) => {
-        setVisibleSummaries(prev => ({ ...prev, [docId]: !prev[docId] }));
-    };
+const toggleSummary = (docId) => {
+    setVisibleSummaries(prev => ({ ...prev, [docId]: !prev[docId] }));
+};
 
-    const handleAskQuestion = async (docId) => {
-        const question = chatQuestion[docId];
-        if (!question || !question.trim()) return;
+const handleAskQuestion = async (docId) => {
+    const question = chatQuestion[docId];
+    if (!question || !question.trim()) return;
 
-        setIsAsking(true);
-        setActiveSummaryId(docId); // Reuse this to track active doc
-        try {
-            const token = localStorage.getItem('codec_token');
-            const res = await fetch(`/api/documents/${docId}/chat`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: 'Bearer ' + token,
-                },
-                body: JSON.stringify({ question }),
-            });
-            const data = await res.json();
-            if (res.ok) {
-                setChatAnswers(prev => ({ ...prev, [docId]: data.answer }));
-                setChatQuestion(prev => ({ ...prev, [docId]: '' }));
-            } else {
-                alert(data.message || 'Failed to get answer');
-            }
-        } catch (err) {
-            console.error('Chat error:', err);
-            alert('Network error during chat');
-        } finally {
-            setIsAsking(false);
-            setActiveSummaryId(null);
-        }
-    };
+    setIsAsking(true);
+    setActiveSummaryId(docId); // Reuse this to track active doc
+    try {
+        const { data } = await apiClient.post(`/api/documents/${docId}/chat`, { question });
+        setChatAnswers(prev => ({ ...prev, [docId]: data.answer }));
+        setChatQuestion(prev => ({ ...prev, [docId]: '' }));
+    } catch (err) {
+        console.error('Chat error:', err);
+        alert(err.response?.data?.message || 'Network error during chat');
+    } finally {
+        setIsAsking(false);
+        setActiveSummaryId(null);
+    }
+};
 
-    const handleQuestionChange = (docId, value) => {
-        setChatQuestion(prev => ({ ...prev, [docId]: value }));
-    };
+const handleQuestionChange = (docId, value) => {
+    setChatQuestion(prev => ({ ...prev, [docId]: value }));
+};
 
-    const handleDelete = async (documentId) => {
-        // Confirmation prompt
-        const confirmed = window.confirm('Are you sure you want to delete this document? This action cannot be undone.');
+const handleDelete = async (documentId) => {
+    // Confirmation prompt
+    const confirmed = window.confirm('Are you sure you want to delete this document? This action cannot be undone.');
 
-        if (!confirmed) return;
+    if (!confirmed) return;
 
-        try {
-            const token = localStorage.getItem('codec_token');
-            const res = await fetch(`/api/documents/${documentId}`, {
-                method: 'DELETE',
-                headers: {
-                    'Authorization': 'Bearer ' + token
-                }
-            });
+    try {
+        await apiClient.delete(`/api/documents/${documentId}`);
+        // Immediately remove from local state
+        setDocuments(prev => prev.filter(doc => (doc._id || doc.id) !== documentId));
 
-            if (res.ok) {
-                // Immediately remove from local state
-                setDocuments(prev => prev.filter(doc => (doc._id || doc.id) !== documentId));
+        // Show success message
+        alert('Document deleted successfully!');
+    } else {
+        const data = await res.json();
+        alert(data.message || 'Failed to delete document');
+    }
+} catch (err) {
+    console.error('Delete error:', err);
+    alert('Network error during deletion');
+}
+};
 
-                // Show success message
-                alert('Document deleted successfully!');
-            } else {
-                const data = await res.json();
-                alert(data.message || 'Failed to delete document');
-            }
-        } catch (err) {
-            console.error('Delete error:', err);
-            alert('Network error during deletion');
-        }
-    };
+const handleViewDoc = (doc) => {
+    const baseName = (doc.originalName || doc.fileName || '').toString()
+    const ext = (baseName.split('.').pop() || '').toUpperCase()
+    const type = ['PDF', 'DOCX', 'PNG', 'JPG'].includes(ext)
+        ? ext
+        : (doc.mimeType?.includes('pdf') ? 'PDF' : (doc.mimeType?.includes('presentation') ? 'PPTX' : 'DOCX'))
 
-    const handleViewDoc = (doc) => {
-        const baseName = (doc.originalName || doc.fileName || '').toString()
-        const ext = (baseName.split('.').pop() || '').toUpperCase()
-        const type = ['PDF', 'DOCX', 'PNG', 'JPG'].includes(ext)
-            ? ext
-            : (doc.mimeType?.includes('pdf') ? 'PDF' : (doc.mimeType?.includes('presentation') ? 'PPTX' : 'DOCX'))
-
-        // Format file size
-        const formatSize = (bytes) => {
-            if (!bytes) return '0 B';
-            const k = 1024;
-            const sizes = ['B', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-        }
-
-        setViewDoc({
-            id: doc._id || doc.id,
-            title: baseName.replace(/\.[^/.]+$/, ''),
-            type,
-            size: formatSize(doc.size),
-            fileUrl: doc.fileUrl,
-            aiSummary: doc.aiSummary || ''
-        })
+    // Format file size
+    const formatSize = (bytes) => {
+        if (!bytes) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
-    const filteredDocuments = useMemo(() => {
-        if (activeFilter === 'All') return documents
+    setViewDoc({
+        id: doc._id || doc.id,
+        title: baseName.replace(/\.[^/.]+$/, ''),
+        type,
+        size: formatSize(doc.size),
+        fileUrl: doc.fileUrl,
+        aiSummary: doc.aiSummary || ''
+    })
+}
 
-        return documents.filter(doc => {
-            const type = doc.mimeType || ''
-            if (activeFilter === 'PDF') return type.includes('pdf')
-            if (activeFilter === 'Images') return type.startsWith('image/')
-            if (activeFilter === 'CSV/Data') return type.includes('csv') || type.includes('spreadsheet') || type.includes('excel')
-            return true
-        })
-    }, [documents, activeFilter])
+const filteredDocuments = useMemo(() => {
+    if (activeFilter === 'All') return documents
 
-    return (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+    return documents.filter(doc => {
+        const type = doc.mimeType || ''
+        if (activeFilter === 'PDF') return type.includes('pdf')
+        if (activeFilter === 'Images') return type.startsWith('image/')
+        if (activeFilter === 'CSV/Data') return type.includes('csv') || type.includes('spreadsheet') || type.includes('excel')
+        return true
+    })
+}, [documents, activeFilter])
 
-            {/* Header */}
-            <div style={{
-                padding: '24px 32px',
-                borderBottom: '1px solid rgba(255,255,255,0.06)',
-                background: 'rgba(3,3,3,0.2)'
-            }}>
-                <h1 style={{ fontSize: 20, fontWeight: 700, color: '#f9fafb', marginBottom: 16 }}>Deep Search</h1>
+return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
 
-                <form onSubmit={handleSearch} style={{ display: 'flex', gap: 12, maxWidth: 1000 }}>
-                    <div style={{ position: 'relative', flex: 2 }}>
-                        <Search size={16} color="#6b7280" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)' }} />
-                        <input
-                            type="text"
-                            placeholder="Search content, titles..."
-                            value={searchQuery}
-                            onChange={e => setSearchQuery(e.target.value)}
-                            style={{
-                                width: '100%',
-                                padding: '12px 16px 12px 42px',
-                                borderRadius: 10,
-                                background: 'rgba(255,255,255,0.05)',
-                                border: '1px solid rgba(255,255,255,0.1)',
-                                color: '#f3f4f6',
-                                fontSize: 14,
-                                outline: 'none',
-                                transition: 'all 0.15s',
-                            }}
-                            onFocus={e => e.target.style.background = 'rgba(255,255,255,0.08)'}
-                            onBlur={e => e.target.style.background = 'rgba(255,255,255,0.05)'}
-                        />
-                    </div>
-                    <div style={{ position: 'relative', flex: 1 }}>
-                        <input
-                            type="text"
-                            placeholder="Filter by Tags..."
-                            value={tagFilter}
-                            onChange={e => setTagFilter(e.target.value)}
-                            style={{
-                                width: '100%',
-                                padding: '12px 16px',
-                                borderRadius: 10,
-                                background: 'rgba(255,255,255,0.05)',
-                                border: '1px solid rgba(255,255,255,0.1)',
-                                color: '#f3f4f6',
-                                fontSize: 14,
-                                outline: 'none',
-                                transition: 'all 0.15s',
-                            }}
-                            onFocus={e => e.target.style.background = 'rgba(255,255,255,0.08)'}
-                            onBlur={e => e.target.style.background = 'rgba(255,255,255,0.05)'}
-                        />
-                    </div>
-                    <div style={{ position: 'relative', flex: 0.8 }}>
-                        <select
-                            value={timeFilter}
-                            onChange={e => setTimeFilter(e.target.value)}
-                            style={{
-                                width: '100%',
-                                padding: '12px 16px',
-                                borderRadius: 10,
-                                background: 'rgba(255,255,255,0.05)',
-                                border: '1px solid rgba(255,255,255,0.1)',
-                                color: '#f3f4f6',
-                                fontSize: 14,
-                                outline: 'none',
-                                appearance: 'none',
-                                cursor: 'pointer',
-                            }}
-                        >
-                            <option value="all">All Time</option>
-                            <option value="15">Last 15 Days</option>
-                            <option value="30">Last 30 Days</option>
-                        </select>
-                        <Clock size={14} color="#6b7280" style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-                    </div>
-                    <div style={{ position: 'relative', flex: 0.8 }}>
-                        <select
-                            value={privacyFilter}
-                            onChange={e => setPrivacyFilter(e.target.value)}
-                            style={{
-                                width: '100%',
-                                padding: '12px 16px',
-                                borderRadius: 10,
-                                background: 'rgba(255,255,255,0.05)',
-                                border: '1px solid rgba(255,255,255,0.1)',
-                                color: '#f3f4f6',
-                                fontSize: 14,
-                                outline: 'none',
-                                appearance: 'none',
-                                cursor: 'pointer',
-                            }}
-                        >
-                            <option value="all">All Files</option>
-                            <option value="public">Public Only</option>
-                            <option value="private">Private Only</option>
-                        </select>
-                        <Eye size={14} color="#6b7280" style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-                    </div>
-                </form>
+        {/* Header */}
+        <div style={{
+            padding: '24px 32px',
+            borderBottom: '1px solid rgba(255,255,255,0.06)',
+            background: 'rgba(3,3,3,0.2)'
+        }}>
+            <h1 style={{ fontSize: 20, fontWeight: 700, color: '#f9fafb', marginBottom: 16 }}>Deep Search</h1>
 
-                <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                    {['All', 'PDF', 'Images', 'CSV/Data'].map(filter => (
-                        <FilterButton
-                            key={filter}
-                            label={filter}
-                            active={activeFilter === filter}
-                            onClick={() => setActiveFilter(filter)}
+            <form onSubmit={handleSearch} style={{ display: 'flex', gap: 12, maxWidth: 1000 }}>
+                <div style={{ position: 'relative', flex: 2 }}>
+                    <Search size={16} color="#6b7280" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)' }} />
+                    <input
+                        type="text"
+                        placeholder="Search content, titles..."
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        style={{
+                            width: '100%',
+                            padding: '12px 16px 12px 42px',
+                            borderRadius: 10,
+                            background: 'rgba(255,255,255,0.05)',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            color: '#f3f4f6',
+                            fontSize: 14,
+                            outline: 'none',
+                            transition: 'all 0.15s',
+                        }}
+                        onFocus={e => e.target.style.background = 'rgba(255,255,255,0.08)'}
+                        onBlur={e => e.target.style.background = 'rgba(255,255,255,0.05)'}
+                    />
+                </div>
+                <div style={{ position: 'relative', flex: 1 }}>
+                    <input
+                        type="text"
+                        placeholder="Filter by Tags..."
+                        value={tagFilter}
+                        onChange={e => setTagFilter(e.target.value)}
+                        style={{
+                            width: '100%',
+                            padding: '12px 16px',
+                            borderRadius: 10,
+                            background: 'rgba(255,255,255,0.05)',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            color: '#f3f4f6',
+                            fontSize: 14,
+                            outline: 'none',
+                            transition: 'all 0.15s',
+                        }}
+                        onFocus={e => e.target.style.background = 'rgba(255,255,255,0.08)'}
+                        onBlur={e => e.target.style.background = 'rgba(255,255,255,0.05)'}
+                    />
+                </div>
+                <div style={{ position: 'relative', flex: 0.8 }}>
+                    <select
+                        value={timeFilter}
+                        onChange={e => setTimeFilter(e.target.value)}
+                        style={{
+                            width: '100%',
+                            padding: '12px 16px',
+                            borderRadius: 10,
+                            background: 'rgba(255,255,255,0.05)',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            color: '#f3f4f6',
+                            fontSize: 14,
+                            outline: 'none',
+                            appearance: 'none',
+                            cursor: 'pointer',
+                        }}
+                    >
+                        <option value="all">All Time</option>
+                        <option value="15">Last 15 Days</option>
+                        <option value="30">Last 30 Days</option>
+                    </select>
+                    <Clock size={14} color="#6b7280" style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                </div>
+                <div style={{ position: 'relative', flex: 0.8 }}>
+                    <select
+                        value={privacyFilter}
+                        onChange={e => setPrivacyFilter(e.target.value)}
+                        style={{
+                            width: '100%',
+                            padding: '12px 16px',
+                            borderRadius: 10,
+                            background: 'rgba(255,255,255,0.05)',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            color: '#f3f4f6',
+                            fontSize: 14,
+                            outline: 'none',
+                            appearance: 'none',
+                            cursor: 'pointer',
+                        }}
+                    >
+                        <option value="all">All Files</option>
+                        <option value="public">Public Only</option>
+                        <option value="private">Private Only</option>
+                    </select>
+                    <Eye size={14} color="#6b7280" style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                </div>
+            </form>
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                {['All', 'PDF', 'Images', 'CSV/Data'].map(filter => (
+                    <FilterButton
+                        key={filter}
+                        label={filter}
+                        active={activeFilter === filter}
+                        onClick={() => setActiveFilter(filter)}
+                    />
+                ))}
+            </div>
+        </div>
+
+        {/* Results Area */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
+            {isLoading ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '50%', color: '#6b7280' }}>
+                    <Loader size={24} style={{ animation: 'spin 1s linear infinite', marginBottom: 12 }} />
+                    <span style={{ fontSize: 13 }}>Searching your library...</span>
+                </div>
+            ) : error ? (
+                <div style={{ textAlign: 'center', color: '#ef4444', marginTop: 40 }}>{error}</div>
+            ) : filteredDocuments.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <p style={{ fontSize: 11, color: '#6b7280', marginBottom: 8, fontFamily: "'DM Mono',monospace" }}>
+                        FOUND {filteredDocuments.length} RESULT{filteredDocuments.length !== 1 ? 'S' : ''}
+                    </p>
+                    {filteredDocuments.map(doc => (
+                        <ResultRow
+                            key={doc._id}
+                            doc={doc}
+                            onSummarize={handleSummarize}
+                            isSummarizing={isSummarizing}
+                            activeSummaryId={activeSummaryId}
+                            onToggleSummary={toggleSummary}
+                            isSummaryVisible={visibleSummaries[doc._id || doc.id]}
+                            onAskQuestion={handleAskQuestion}
+                            chatQuestion={chatQuestion}
+                            onQuestionChange={handleQuestionChange}
+                            chatAnswers={chatAnswers}
+                            isAsking={isAsking}
+                            onView={handleViewDoc}
+                            onDelete={handleDelete}
                         />
                     ))}
                 </div>
-            </div>
-
-            {/* Results Area */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
-                {isLoading ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '50%', color: '#6b7280' }}>
-                        <Loader size={24} style={{ animation: 'spin 1s linear infinite', marginBottom: 12 }} />
-                        <span style={{ fontSize: 13 }}>Searching your library...</span>
+            ) : (
+                <div style={{ textAlign: 'center', marginTop: 60, opacity: 0.6 }}>
+                    <div style={{
+                        width: 64, height: 64, borderRadius: 20, margin: '0 auto 20px',
+                        background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }}>
+                        <ScanSearch size={28} color="#4b5563" />
                     </div>
-                ) : error ? (
-                    <div style={{ textAlign: 'center', color: '#ef4444', marginTop: 40 }}>{error}</div>
-                ) : filteredDocuments.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        <p style={{ fontSize: 11, color: '#6b7280', marginBottom: 8, fontFamily: "'DM Mono',monospace" }}>
-                            FOUND {filteredDocuments.length} RESULT{filteredDocuments.length !== 1 ? 'S' : ''}
-                        </p>
-                        {filteredDocuments.map(doc => (
-                            <ResultRow
-                                key={doc._id}
-                                doc={doc}
-                                onSummarize={handleSummarize}
-                                isSummarizing={isSummarizing}
-                                activeSummaryId={activeSummaryId}
-                                onToggleSummary={toggleSummary}
-                                isSummaryVisible={visibleSummaries[doc._id || doc.id]}
-                                onAskQuestion={handleAskQuestion}
-                                chatQuestion={chatQuestion}
-                                onQuestionChange={handleQuestionChange}
-                                chatAnswers={chatAnswers}
-                                isAsking={isAsking}
-                                onView={handleViewDoc}
-                                onDelete={handleDelete}
-                            />
-                        ))}
-                    </div>
-                ) : (
-                    <div style={{ textAlign: 'center', marginTop: 60, opacity: 0.6 }}>
-                        <div style={{
-                            width: 64, height: 64, borderRadius: 20, margin: '0 auto 20px',
-                            background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center'
-                        }}>
-                            <ScanSearch size={28} color="#4b5563" />
-                        </div>
-                        <h3 style={{ fontSize: 15, color: '#e5e7eb', marginBottom: 6 }}>No matches found</h3>
-                        <p style={{ fontSize: 13, color: '#6b7280', maxWidth: 300, margin: '0 auto' }}>
-                            Try searching for specific keywords within your document contents or file names.
-                        </p>
-                    </div>
-                )}
-            </div>
+                    <h3 style={{ fontSize: 15, color: '#e5e7eb', marginBottom: 6 }}>No matches found</h3>
+                    <p style={{ fontSize: 13, color: '#6b7280', maxWidth: 300, margin: '0 auto' }}>
+                        Try searching for specific keywords within your document contents or file names.
+                    </p>
+                </div>
+            )}
+        </div>
 
-            {viewDoc && <DocumentViewModal doc={viewDoc} onClose={() => setViewDoc(null)} searchQuery={searchQuery} />}
+        {viewDoc && <DocumentViewModal doc={viewDoc} onClose={() => setViewDoc(null)} searchQuery={searchQuery} />}
 
-            <style>{`
+        <style>{`
                 @keyframes spin { 100% { transform: rotate(360deg); } }
             `}</style>
-        </div>
-    )
+    </div>
+)
 }
