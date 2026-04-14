@@ -32,7 +32,8 @@ const Login = ({ onLogin }) => {
     e.preventDefault();
     setIsLoading(true); setError('');
     try {
-      const res = await fetch('/api/auth/login', {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -54,7 +55,8 @@ const Login = ({ onLogin }) => {
     e.preventDefault();
     setIsLoading(true); setError('');
     try {
-      const res = await fetch('/api/auth/signup-otp', {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/api/auth/signup-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
@@ -73,7 +75,8 @@ const Login = ({ onLogin }) => {
     e.preventDefault();
     setIsLoading(true); setError('');
     try {
-      const res = await fetch('/api/auth/register', {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, otp, password }),
@@ -94,7 +97,8 @@ const Login = ({ onLogin }) => {
     e.preventDefault();
     setIsLoading(true); setError('');
     try {
-      const res = await fetch('/api/auth/forgot-password-otp', {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/api/auth/forgot-password-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
@@ -113,7 +117,8 @@ const Login = ({ onLogin }) => {
     e.preventDefault();
     setIsLoading(true); setError('');
     try {
-      const res = await fetch('/api/auth/reset-password', {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/api/auth/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, otp, newPassword: password }),
