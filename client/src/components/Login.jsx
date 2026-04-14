@@ -170,7 +170,7 @@ const Login = ({ onLogin }) => {
                 <div className="relative">
                   <Mail className="absolute left-4 top-4 h-5 w-5 text-gray-600" />
                   <input
-                    type="email" required value={email} onChange={e => setEmail(e.target.value)}
+                    type="text" inputMode="email" required value={email} onChange={e => setEmail(e.target.value)}
                     className="w-full pl-12 pr-4 py-4 rounded-2xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-white/20 transition-all"
                     placeholder="professor@university.edu"
                   />
@@ -182,6 +182,7 @@ const Login = ({ onLogin }) => {
                   <Lock className="absolute left-4 top-4 h-5 w-5 text-gray-600" />
                   <input
                     type="password" required value={password} onChange={e => setPassword(e.target.value)}
+                    autoComplete="current-password"
                     className="w-full pl-12 pr-4 py-4 rounded-2xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-white/20 transition-all"
                     placeholder="••••••••"
                   />
@@ -209,7 +210,7 @@ const Login = ({ onLogin }) => {
                     <div className="relative">
                       <Mail className="absolute left-4 top-4 h-5 w-5 text-gray-600" />
                       <input
-                        type="email" required value={email} onChange={e => setEmail(e.target.value)}
+                        type="text" inputMode="email" required value={email} onChange={e => setEmail(e.target.value)}
                         className="w-full pl-12 pr-4 py-4 rounded-2xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-white/20 transition-all"
                         placeholder="professor@university.edu"
                       />
@@ -242,6 +243,7 @@ const Login = ({ onLogin }) => {
                       <Lock className="absolute left-4 top-4 h-5 w-5 text-gray-600" />
                       <input
                         type="password" required value={password} onChange={e => setPassword(e.target.value)}
+                        autoComplete="new-password"
                         className="w-full pl-12 pr-4 py-4 rounded-2xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-white/20 transition-all"
                         placeholder="Minimum 6 characters"
                       />
@@ -273,7 +275,7 @@ const Login = ({ onLogin }) => {
                     <div className="relative">
                       <Mail className="absolute left-4 top-4 h-5 w-5 text-gray-600" />
                       <input
-                        type="email" required value={email} onChange={e => setEmail(e.target.value)}
+                        type="text" inputMode="email" required value={email} onChange={e => setEmail(e.target.value)}
                         className="w-full pl-12 pr-4 py-4 rounded-2xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-white/20 transition-all"
                         placeholder="professor@university.edu"
                       />
@@ -307,6 +309,7 @@ const Login = ({ onLogin }) => {
                       <Lock className="absolute left-4 top-4 h-5 w-5 text-gray-600" />
                       <input
                         type="password" required value={password} onChange={e => setPassword(e.target.value)}
+                        autoComplete="new-password"
                         className="w-full pl-12 pr-4 py-4 rounded-2xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-white/20 transition-all"
                         placeholder="Enter new password"
                       />
