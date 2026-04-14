@@ -4,7 +4,7 @@ import { Upload, Search, Users, LogOut, Cpu, UserCircle, Bell, CheckCircle, Shar
 import MyUploadsView from './MyUploadsView'
 import SearchPageView from './SearchPageView'
 import CommunityView from './CommunityView'
-import ProfileView from './ProfileView'
+import ProfileView from './Profileview'
 import SharedDocuments from './SharedDocuments'
 import ManageGroups from './ManageGroups'
 
