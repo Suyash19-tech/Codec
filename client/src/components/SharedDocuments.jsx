@@ -447,133 +447,198 @@ function SharedDocCard({ doc, onSummarize, isSummarizing, activeSummaryId, onTog
 
     const Icon = getIcon(doc.mimeType, doc.fileName)
     const docId = doc._id || doc.id;
-    const isThisDocSummarizing = isSummarizing && activeSummaryId === docId;
 
     return (
         <div
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             style={{
-                display: 'flex', flexDirection: 'column', gap: 14,
-                padding: '20px', borderRadius: 14,
-                background: hovered ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.03)',
-                border: hovered ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(255,255,255,0.07)',
-                transition: 'all 0.2s',
-                backdropFilter: 'blur(12px)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '1rem',
+                padding: '1.5rem',
+                borderRadius: 16,
+                background: hovered ? '#1f1f23' : '#1a1a1d',
+                border: hovered ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(255,255,255,0.08)',
+                transition: 'all 0.2s ease',
+                boxShadow: hovered ? '0 8px 24px rgba(0,0,0,0.4)' : '0 2px 8px rgba(0,0,0,0.2)',
             }}
         >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 16 }}>
-                <div style={{ display: 'flex', gap: 12, flex: 1, minWidth: 0 }}>
-                    <a
-                        href={doc.fileUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                            width: 38, height: 38, borderRadius: 10, flexShrink: 0,
-                            background: 'rgba(255,255,255,0.06)',
-                            border: '1px solid rgba(255,255,255,0.1)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            textDecoration: 'none'
-                        }}
-                    >
-                        <Icon size={18} color="#9ca3af" />
-                    </a>
+            {/* Header Row: Icon + File Name + Action Buttons */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                {/* Left: Icon + File Info */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
+                    <div style={{
+                        width: 42,
+                        height: 42,
+                        borderRadius: 12,
+                        flexShrink: 0,
+                        background: 'rgba(129,140,248,0.1)',
+                        border: '1px solid rgba(129,140,248,0.2)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                    }}>
+                        <Icon size={20} color="#a5b4fc" />
+                    </div>
 
                     <div style={{ flex: 1, minWidth: 0 }}>
-                        <a
-                            href={doc.fileUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="truncate"
-                            style={{ fontSize: 14, fontWeight: 600, color: '#f3f4f6', marginBottom: 4, textDecoration: 'none', display: 'block' }}
-                        >
+                        <h3 style={{
+                            fontSize: 15,
+                            fontWeight: 600,
+                            color: '#f3f4f6',
+                            marginBottom: 4,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            lineHeight: 1.3
+                        }}>
                             {doc.originalName}
-                        </a>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                            <span style={{ fontSize: 11, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <Clock size={10} /> {new Date(doc.createdAt).toLocaleDateString()}
-                            </span>
+                        </h3>
+                        {/* Metadata Row: File Type + Date */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                             <span style={{
-                                fontSize: 9, fontFamily: "'DM Mono',monospace", letterSpacing: '0.1em',
-                                padding: '2px 6px', borderRadius: 4,
-                                background: 'rgba(255,255,255,0.04)',
+                                fontSize: 10,
+                                fontFamily: "'DM Mono',monospace",
+                                letterSpacing: '0.08em',
+                                padding: '3px 8px',
+                                borderRadius: 5,
+                                background: 'rgba(255,255,255,0.05)',
                                 border: '1px solid rgba(255,255,255,0.08)',
                                 color: '#9ca3af',
+                                textTransform: 'uppercase'
                             }}>
-                                {doc.mimeType?.split('/')[1]?.toUpperCase() || 'FILE'}
+                                {doc.mimeType?.split('/')[1] || 'FILE'}
                             </span>
-                            <button
-                                onClick={(e) => { e.preventDefault(); onView(doc) }}
-                                style={{
-                                    padding: '2px 8px', borderRadius: 4,
-                                    background: 'rgba(129,140,248,0.1)',
-                                    border: '1px solid rgba(129,140,248,0.2)',
-                                    color: '#a5b4fc', fontSize: 10, fontWeight: 500,
-                                    cursor: 'pointer', transition: 'all 0.15s'
-                                }}
-                            >View</button>
+                            <span style={{
+                                fontSize: 11,
+                                color: '#6b7280',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 4
+                            }}>
+                                <Clock size={11} />
+                                {new Date(doc.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </span>
                         </div>
                     </div>
                 </div>
 
+                {/* Right: Action Buttons */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                     <button
-                        onClick={() => onOpenChat(doc)}
+                        onClick={(e) => { e.preventDefault(); onView(doc) }}
                         style={{
-                            padding: '6px 10px', borderRadius: 6,
-                            background: 'rgba(129,140,248,0.1)',
-                            border: '1px solid rgba(129,140,248,0.2)',
-                            color: '#a5b4fc', display: 'flex', alignItems: 'center', gap: 6,
-                            fontSize: 10, cursor: 'pointer', transition: 'all 0.15s'
+                            padding: '8px 14px',
+                            borderRadius: 8,
+                            background: 'rgba(129,140,248,0.12)',
+                            border: '1px solid rgba(129,140,248,0.25)',
+                            color: '#a5b4fc',
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            transition: 'all 0.15s',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6
                         }}
-                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(129,140,248,0.2)'}
-                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(129,140,248,0.1)'}
+                        onMouseEnter={e => {
+                            e.currentTarget.style.background = 'rgba(129,140,248,0.2)'
+                            e.currentTarget.style.transform = 'translateY(-1px)'
+                        }}
+                        onMouseLeave={e => {
+                            e.currentTarget.style.background = 'rgba(129,140,248,0.12)'
+                            e.currentTarget.style.transform = 'translateY(0)'
+                        }}
                     >
-                        <MessageSquare size={13} /> Chat
+                        <BookOpen size={14} />
+                        View
                     </button>
                     <a
                         href={doc.fileUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         style={{
-                            padding: '6px 10px', borderRadius: 6,
-                            background: 'rgba(255,255,255,0.05)',
-                            border: '1px solid rgba(255,255,255,0.1)',
-                            color: '#9ca3af', display: 'flex', alignItems: 'center',
-                            textDecoration: 'none', transition: 'all 0.15s'
+                            padding: '8px 12px',
+                            borderRadius: 8,
+                            background: 'rgba(255,255,255,0.06)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            color: '#9ca3af',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            textDecoration: 'none',
+                            transition: 'all 0.15s',
+                            cursor: 'pointer'
                         }}
-                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                        onMouseEnter={e => {
+                            e.currentTarget.style.background = 'rgba(255,255,255,0.1)'
+                            e.currentTarget.style.color = '#d1d5db'
+                            e.currentTarget.style.transform = 'translateY(-1px)'
+                        }}
+                        onMouseLeave={e => {
+                            e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
+                            e.currentTarget.style.color = '#9ca3af'
+                            e.currentTarget.style.transform = 'translateY(0)'
+                        }}
+                        title="Download"
                     >
-                        <Download size={14} />
+                        <Download size={16} />
                     </a>
                 </div>
             </div>
 
-            {/* AI Summary Content REMOVED for Privacy */}
-            <div style={{ marginTop: 4 }}>
-            </div>
-
-            {/* Footer - Shared By */}
+            {/* Separator Line */}
             <div style={{
-                marginTop: 'auto', paddingTop: 14,
-                borderTop: '1px solid rgba(255,255,255,0.05)',
-                display: 'flex', alignItems: 'center', gap: 10
+                height: 1,
+                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent)',
+                margin: '0.25rem 0'
+            }} />
+
+            {/* Footer: Shared By Section */}
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                paddingTop: 4
             }}>
                 <div style={{
-                    width: 24, height: 24, borderRadius: '50%',
-                    background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 10, fontWeight: 600, color: '#9ca3af'
+                    width: 28,
+                    height: 28,
+                    borderRadius: '50%',
+                    background: 'rgba(129,140,248,0.1)',
+                    border: '1px solid rgba(129,140,248,0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: '#a5b4fc',
+                    flexShrink: 0
                 }}>
-                    {doc.uploader?.name?.[0]?.toUpperCase() || 'P'}
+                    {doc.uploader?.name?.[0]?.toUpperCase() || 'U'}
                 </div>
-                <div style={{ minWidth: 0 }}>
-                    <p style={{ fontSize: 11, color: '#6b7280', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        👤 Shared by: <span style={{ color: '#9ca3af', fontWeight: 500 }}>{doc.uploader?.name}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{
+                        fontSize: 12,
+                        color: '#9ca3af',
+                        marginBottom: 2,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                    }}>
+                        Shared by <span style={{ color: '#d1d5db', fontWeight: 600 }}>{doc.uploader?.name || 'Unknown'}</span>
                     </p>
-                    <p style={{ fontSize: 9, color: '#374151' }}>{doc.uploader?.designation} · {doc.uploader?.department}</p>
+                    <p style={{
+                        fontSize: 10,
+                        color: '#6b7280',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4
+                    }}>
+                        <User size={9} />
+                        {doc.uploader?.designation || 'Faculty'} · {doc.uploader?.department || 'N/A'}
+                    </p>
                 </div>
             </div>
         </div>
