@@ -889,20 +889,13 @@ export default function MyUploadsView({ userRole, initialFolderId = null }) {
 
     const fetchDirectory = useCallback(async (fId = null) => {
         setLoading(true)
-        const token = localStorage.getItem('codec_token')
-        if (!token) return
 
         try {
             const url = `/api/folders${fId ? `?folderId=${fId}` : ''}`
-            const res = await fetch(url, {
-                headers: { Authorization: 'Bearer ' + token },
-            })
-            const data = await res.json()
+            const { data } = await apiClient.get(url)
             console.log('--- DIRECTORY DATA RECEIVED ---', data);
-            if (res.ok) {
-                setFolders(data.folders || [])
-                setDocs((data.documents || []).map(toCard))
-            }
+            setFolders(data.folders || [])
+            setDocs((data.documents || []).map(toCard))
         } catch (err) {
             console.error('Fetch directory error:', err)
         } finally {
@@ -961,33 +954,21 @@ export default function MyUploadsView({ userRole, initialFolderId = null }) {
 
                 // 2. Save metadata to Backend
                 setUploadStatusText(`Processing ${i + 1} of ${totalFiles}: ${file.name}`)
-                const res = await fetch('/api/documents/upload', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Authorization: 'Bearer ' + token
-                    },
-                    body: JSON.stringify({
-                        originalName: file.name,
-                        fileUrl: cleanSecureUrl,
-                        cloudinaryId: public_id,
-                        size: bytes,
-                        tags: uploadTags,
-                        folderId: currentFolder
-                    }),
+                const { data } = await apiClient.post('/api/documents/upload', {
+                    originalName: file.name,
+                    fileUrl: cleanSecureUrl,
+                    cloudinaryId: public_id,
+                    size: bytes,
+                    tags: uploadTags,
+                    folderId: currentFolder
                 })
 
-                if (res.ok) {
-                    const data = await res.json()
-                    uploadedDocs.push(toCard(data))
-                } else {
-                    console.error('Failed to save metadata to backend');
-                }
+                uploadedDocs.push(toCard(data))
             }
 
-            if (uploadedDocs.length > 0) {
-                setDocs(prev => [...uploadedDocs, ...prev])
-            }
+            // Refresh directory to show uploaded files
+            await fetchDirectory(currentFolder)
+
             setUploadTags('')
             setUploadStatusText(`Successfully uploaded ${uploadedDocs.length} file(s)!`)
 
@@ -1057,26 +1038,17 @@ export default function MyUploadsView({ userRole, initialFolderId = null }) {
                 const cleanSecureUrl = secure_url.replace(/[`']/g, "").trim();
 
                 // 2. Save metadata to Backend
-                const res = await fetch('/api/documents/upload', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Authorization: 'Bearer ' + token
-                    },
-                    body: JSON.stringify({
-                        originalName: file.name,
-                        fileUrl: cleanSecureUrl,
-                        cloudinaryId: public_id,
-                        size: bytes,
-                        tags: uploadTags,
-                        folderId: currentFolder,
-                        webkitRelativePath: file.webkitRelativePath
-                    }),
+                await apiClient.post('/api/documents/upload', {
+                    originalName: file.name,
+                    fileUrl: cleanSecureUrl,
+                    cloudinaryId: public_id,
+                    size: bytes,
+                    tags: uploadTags,
+                    folderId: currentFolder,
+                    webkitRelativePath: file.webkitRelativePath
                 })
 
-                if (res.ok) {
-                    successCount++;
-                }
+                successCount++;
             } catch (err) {
                 if (err.name === 'AbortError' || axios.isCancel(err)) {
                     console.log('Upload aborted by user');

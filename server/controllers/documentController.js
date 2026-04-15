@@ -167,10 +167,41 @@ const uploadDocuments = async (req, res) => {
 // 2. Get documents for the logged-in user
 const getMyDocuments = async (req, res) => {
     try {
-        const documents = await Document.find({ uploader: req.user.id }).sort({ createdAt: -1 });
+        console.log('\n╔════════════════════════════════════════════════════════════╗');
+        console.log('║         GET MY DOCUMENTS - START                           ║');
+        console.log('╚════════════════════════════════════════════════════════════╝');
+        console.log('[getMyDocuments] Fetching for user:', req.user.id);
+        console.log('[getMyDocuments] User email:', req.user.email);
+
+        const { folderId } = req.query;
+
+        let query = { uploader: req.user.id };
+
+        if (folderId && folderId !== 'null' && folderId !== 'undefined') {
+            query.folderId = folderId;
+            console.log('[getMyDocuments] Filtering by folderId:', folderId);
+        } else {
+            query.folderId = null;
+            console.log('[getMyDocuments] Fetching root-level documents (no folder)');
+        }
+
+        console.log('[getMyDocuments] Query:', JSON.stringify(query));
+
+        const documents = await Document.find(query).sort({ createdAt: -1 });
+
+        console.log('[getMyDocuments] ✅ Found', documents.length, 'documents');
+        if (documents.length > 0) {
+            console.log('[getMyDocuments] First document:', {
+                id: documents[0]._id,
+                name: documents[0].originalName,
+                uploader: documents[0].uploader
+            });
+        }
+        console.log('╚════════════════════════════════════════════════════════════╝\n');
+
         res.status(200).json(documents);
     } catch (error) {
-        console.error('Fetch Documents Error:', error);
+        console.error('[getMyDocuments] ❌ Error:', error);
         res.status(500).json({ message: 'Server error fetching documents' });
     }
 };
