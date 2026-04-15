@@ -74,7 +74,7 @@ const sendEmail = async (mailOptions) => {
       console.log('⏳ [EMAIL] Sending via Resend (HTTP API)...');
 
       const result = await resend.emails.send({
-        from: mailOptions.from || 'Codec <onboarding@resend.dev>',
+        from: 'Codec <onboarding@resend.dev>',
         to: mailOptions.to,
         subject: mailOptions.subject,
         html: mailOptions.html || mailOptions.text
@@ -83,11 +83,15 @@ const sendEmail = async (mailOptions) => {
       console.log('╔════════════════════════════════════════════════════════════╗');
       console.log('║         EMAIL SEND SUCCESS ✅ (Resend)                     ║');
       console.log('╚════════════════════════════════════════════════════════════╝');
-      console.log('✅ [EMAIL] Message ID:', result.data?.id);
+      console.log('✅ [EMAIL] Message ID:', result.data?.id || result.id);
+      console.log('✅ [EMAIL] Full Response:', JSON.stringify(result, null, 2));
+      console.log('⚠️  [EMAIL] NOTE: Check spam folder or add recipient to Resend Audience');
+      console.log('⚠️  [EMAIL] Resend Dashboard: https://resend.com/emails');
 
       return result;
     } catch (error) {
       console.error('❌ [EMAIL] Resend failed:', error.message);
+      console.error('❌ [EMAIL] Error details:', error);
       console.error('❌ [EMAIL] Falling back to Nodemailer...');
     }
   }
