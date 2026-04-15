@@ -7,7 +7,7 @@ import { Users, Plus, X, UserPlus, CheckCircle, Shield, ShieldAlert, Star, Trash
 function GroupDetails({ group, allUsers, onUpdate, onDelete, onClose }) {
     const [isAdding, setIsAdding] = useState(false)
     const [selectedNewMembers, setSelectedNewMembers] = useState([])
-    
+
     // Safely extract current user ID from local storage
     const storedUserId = localStorage.getItem('codec_user_id')
     let currentUserId = storedUserId
@@ -33,9 +33,10 @@ function GroupDetails({ group, allUsers, onUpdate, onDelete, onClose }) {
     const handleAddMembers = async () => {
         console.log("Adding members to group:", group._id, selectedNewMembers);
         const token = localStorage.getItem('codec_token')
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
         try {
             // RULE 4: NETWORK REQUIREMENTS (Headers & Payload)
-            const res = await fetch(`/api/groups/${group._id}/members`, {
+            const res = await fetch(`${API_URL}/api/groups/${group._id}/members`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -63,9 +64,10 @@ function GroupDetails({ group, allUsers, onUpdate, onDelete, onClose }) {
         if (!window.confirm("Promote this member to Group Admin?")) return
         console.log("Promoting user to admin:", userId, "in group:", group._id);
         const token = localStorage.getItem('codec_token')
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
         try {
             // RULE 4: NETWORK REQUIREMENTS (Headers & Payload)
-            const res = await fetch(`/api/groups/${group._id}/admins`, {
+            const res = await fetch(`${API_URL}/api/groups/${group._id}/admins`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -91,9 +93,10 @@ function GroupDetails({ group, allUsers, onUpdate, onDelete, onClose }) {
         if (!window.confirm("Are you sure you want to delete this group? This action cannot be undone.")) return
         console.log("Deleting group:", group._id);
         const token = localStorage.getItem('codec_token')
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
         try {
             // RULE 4: NETWORK REQUIREMENTS (Headers)
-            const res = await fetch(`/api/groups/${group._id}`, {
+            const res = await fetch(`${API_URL}/api/groups/${group._id}`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': 'Bearer ' + token
@@ -247,22 +250,29 @@ export default function ManageGroups() {
     useEffect(() => {
         const fetchData = async () => {
             const token = localStorage.getItem('codec_token')
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
+            console.log('📡 [ManageGroups] Fetching from:', API_URL)
             try {
                 const [groupsRes, usersRes] = await Promise.all([
-                    fetch('/api/groups', { headers: { Authorization: 'Bearer ' + token } }),
-                    fetch('/api/users', { headers: { Authorization: 'Bearer ' + token } })
+                    fetch(`${API_URL}/api/groups`, { headers: { Authorization: 'Bearer ' + token } }),
+                    fetch(`${API_URL}/api/users`, { headers: { Authorization: 'Bearer ' + token } })
                 ])
                 if (groupsRes.ok) {
                     const data = await groupsRes.json();
-                    console.log("Fetched groups:", data);
+                    console.log("✅ [ManageGroups] Fetched groups:", data.length);
                     setGroups(data);
+                } else {
+                    console.error('❌ [ManageGroups] Groups fetch failed:', groupsRes.status)
                 }
                 if (usersRes.ok) {
                     const users = await usersRes.json();
+                    console.log("✅ [ManageGroups] Fetched users:", users.length);
                     setAllUsers(users.filter(u => u._id !== localStorage.getItem('codec_user_id')));
+                } else {
+                    console.error('❌ [ManageGroups] Users fetch failed:', usersRes.status)
                 }
             } catch (err) {
-                console.error("Fetch error", err)
+                console.error("❌ [ManageGroups] Fetch error", err)
             } finally {
                 setLoading(false)
             }
@@ -275,8 +285,10 @@ export default function ManageGroups() {
         if (!newGroupName.trim()) return
 
         const token = localStorage.getItem('codec_token')
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
+        console.log('📡 [ManageGroups] Creating group:', newGroupName, 'with members:', selectedMembers)
         try {
-            const res = await fetch('/api/groups', {
+            const res = await fetch(`${API_URL}/api/groups`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -286,15 +298,21 @@ export default function ManageGroups() {
             })
             if (res.ok) {
                 const newGroup = await res.json()
+                console.log('✅ [ManageGroups] Group created:', newGroup)
                 setGroups([newGroup, ...groups])
                 setNewGroupName('')
                 setSelectedMembers([])
                 setShowCreate(false)
                 setMessage({ type: 'success', text: 'Group created successfully!' })
                 setTimeout(() => setMessage(null), 3000)
+            } else {
+                const error = await res.json()
+                console.error('❌ [ManageGroups] Create failed:', error)
+                alert(error.message || 'Failed to create group')
             }
         } catch (err) {
-            console.error("Create group error", err)
+            console.error("❌ [ManageGroups] Create group error", err)
+            alert('Network error creating group')
         }
     }
 
