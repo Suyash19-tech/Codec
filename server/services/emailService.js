@@ -13,11 +13,11 @@ if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
 
 // Create transporter with production-optimized configuration
 // Using port 587 with STARTTLS to avoid IPv6/firewall issues on Render
+// CRITICAL: Do NOT use 'service' option as it overrides port to 465
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 587,
   secure: false, // Use STARTTLS instead of SSL
-  service: 'gmail', // Backup configuration
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
@@ -28,7 +28,8 @@ const transporter = nodemailer.createTransport({
   },
   connectionTimeout: 30000, // 30 seconds for Render cold starts
   greetingTimeout: 30000, // 30 seconds for slow SMTP handshake
-  socketTimeout: 30000 // 30 seconds for socket operations
+  socketTimeout: 30000, // 30 seconds for socket operations
+  family: 4 // Force IPv4 to avoid IPv6 ENETUNREACH errors on Render
 });
 
 console.log('📧 [EMAIL] Transporter created with production-optimized config');
