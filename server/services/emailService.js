@@ -80,18 +80,33 @@ const sendEmail = async (mailOptions) => {
         html: mailOptions.html || mailOptions.text
       });
 
+      // Check if there's an error in the response
+      if (result.error) {
+        console.error('╔════════════════════════════════════════════════════════════╗');
+        console.error('║         EMAIL SEND FAILED ❌ (Resend)                      ║');
+        console.error('╚════════════════════════════════════════════════════════════╝');
+        console.error('❌ [EMAIL] Resend Error:', result.error.message);
+        console.error('❌ [EMAIL] Status Code:', result.error.statusCode);
+
+        if (result.error.statusCode === 404 && result.error.message === 'User not found') {
+          console.error('⚠️  [EMAIL] SOLUTION: Add recipient to Resend Audience');
+          console.error('⚠️  [EMAIL] 1. Go to: https://resend.com/audiences');
+          console.error('⚠️  [EMAIL] 2. Click "Add Contact"');
+          console.error('⚠️  [EMAIL] 3. Add email:', mailOptions.to);
+          console.error('⚠️  [EMAIL] OR verify a custom domain at: https://resend.com/domains');
+        }
+
+        throw new Error(`Resend API Error: ${result.error.message}`);
+      }
+
       console.log('╔════════════════════════════════════════════════════════════╗');
       console.log('║         EMAIL SEND SUCCESS ✅ (Resend)                     ║');
       console.log('╚════════════════════════════════════════════════════════════╝');
       console.log('✅ [EMAIL] Message ID:', result.data?.id || result.id);
-      console.log('✅ [EMAIL] Full Response:', JSON.stringify(result, null, 2));
-      console.log('⚠️  [EMAIL] NOTE: Check spam folder or add recipient to Resend Audience');
-      console.log('⚠️  [EMAIL] Resend Dashboard: https://resend.com/emails');
 
       return result;
     } catch (error) {
       console.error('❌ [EMAIL] Resend failed:', error.message);
-      console.error('❌ [EMAIL] Error details:', error);
       console.error('❌ [EMAIL] Falling back to Nodemailer...');
     }
   }
