@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const { sendPrivateMessage, getPrivateMessages } = require('../controllers/messageController');
-const authMiddleware = require('../middleware/authMiddleware');
+const { protect } = require('../middleware/authMiddleware');
 
-router.post('/:docId', authMiddleware, sendPrivateMessage);
-router.get('/:docId/:peerId', authMiddleware, getPrivateMessages);
+router.post('/:docId', protect, sendPrivateMessage);
+router.get('/:docId/:peerId', protect, getPrivateMessages);
 
 module.exports = router;

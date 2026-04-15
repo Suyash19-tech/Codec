@@ -1,10 +1,10 @@
 // server/routes/folderRoutes.js
 const express = require('express');
 const router = express.Router();
-const authMiddleware = require('../middleware/authMiddleware');
+const { protect } = require('../middleware/authMiddleware');
 const { createFolder, getDirectoryContents, updateFolder, deleteFolder } = require('../controllers/folderController');
 
-router.use(authMiddleware);
+router.use(protect);
 
 router.post('/', createFolder);
 router.get('/', getDirectoryContents);

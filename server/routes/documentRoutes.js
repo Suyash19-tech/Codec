@@ -1,30 +1,30 @@
 const express = require('express');
 const router = express.Router();
 const { uploadDocuments, getMyDocuments, searchDocuments, deleteDocument, getPublicUserDocuments, toggleDocumentPrivacy, shareDocument, getSharedDocuments } = require('../controllers/documentController');
-const authMiddleware = require('../middleware/authMiddleware');
+const { protect } = require('../middleware/authMiddleware');
 
 // GET /api/documents/search - Search documents
-router.get('/search', authMiddleware, searchDocuments);
+router.get('/search', protect, searchDocuments);
 
 // GET /api/documents/shared - Get shared with me
-router.get('/shared', authMiddleware, getSharedDocuments);
+router.get('/shared', protect, getSharedDocuments);
 
 // GET /api/documents/user/:userId/public - Get public documents for a user
-router.get('/user/:userId/public', authMiddleware, getPublicUserDocuments);
+router.get('/user/:userId/public', protect, getPublicUserDocuments);
 
 // PATCH /api/documents/:id/privacy - Toggle document privacy
-router.patch('/:id/privacy', authMiddleware, toggleDocumentPrivacy);
+router.patch('/:id/privacy', protect, toggleDocumentPrivacy);
 
 // DELETE /api/documents/:id - Delete a document
-router.delete('/:id', authMiddleware, deleteDocument);
+router.delete('/:id', protect, deleteDocument);
 
 // GET /api/documents - Fetch user's docs
-router.get('/', authMiddleware, getMyDocuments);
+router.get('/', protect, getMyDocuments);
 
 // POST /api/documents/:id/share - Share document
-router.post('/:id/share', authMiddleware, shareDocument);
+router.post('/:id/share', protect, shareDocument);
 
 // POST /api/documents/upload - Direct JSON metadata upload
-router.post('/upload', authMiddleware, uploadDocuments);
+router.post('/upload', protect, uploadDocuments);
 
 module.exports = router;
