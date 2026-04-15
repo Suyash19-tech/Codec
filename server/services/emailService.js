@@ -1,10 +1,19 @@
 const nodemailer = require('nodemailer');
 const { Resend } = require('resend');
+const axios = require('axios');
 
 console.log('📧 [EMAIL] Initializing Email Service...');
 console.log('📧 [EMAIL] EMAIL_USER:', process.env.EMAIL_USER);
 console.log('📧 [EMAIL] EMAIL_PASS:', process.env.EMAIL_PASS ? '***SET***' : '***NOT SET***');
 console.log('📧 [EMAIL] RESEND_API_KEY:', process.env.RESEND_API_KEY ? '***SET***' : '***NOT SET***');
+console.log('📧 [EMAIL] BREVO_API_KEY:', process.env.BREVO_API_KEY ? '***SET***' : '***NOT SET***');
+
+// Initialize Brevo (300 emails/day, no audience restrictions)
+let brevoApiKey = null;
+if (process.env.BREVO_API_KEY) {
+  brevoApiKey = process.env.BREVO_API_KEY;
+  console.log('✅ [EMAIL] Brevo initialized (300 emails/day, no restrictions)');
+}
 
 // Initialize Resend (HTTP-based, works on Render)
 let resend = null;
@@ -14,11 +23,11 @@ if (process.env.RESEND_API_KEY) {
 }
 
 // Validate environment variables
-if (!process.env.RESEND_API_KEY && (!process.env.EMAIL_USER || !process.env.EMAIL_PASS)) {
-  const errorMsg = '❌ [EMAIL] CRITICAL: Neither RESEND_API_KEY nor EMAIL_USER/EMAIL_PASS are set!';
+if (!process.env.BREVO_API_KEY && !process.env.RESEND_API_KEY && (!process.env.EMAIL_USER || !process.env.EMAIL_PASS)) {
+  const errorMsg = '❌ [EMAIL] CRITICAL: No email service configured!';
   console.error(errorMsg);
-  console.error('❌ [EMAIL] Please set RESEND_API_KEY for production (Render blocks SMTP)');
-  console.error('❌ [EMAIL] Get free API key at: https://resend.com/api-keys');
+  console.error('❌ [EMAIL] Set BREVO_API_KEY (recommended) or RESEND_API_KEY or EMAIL_USER/EMAIL_PASS');
+  console.error('❌ [EMAIL] Get Brevo API key at: https://app.brevo.com/settings/keys/api');
 }
 
 // Create nodemailer transporter as fallback (for local development)
@@ -57,7 +66,7 @@ if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
 }
 
 /**
- * Send email with Resend (primary) or Nodemailer (fallback)
+ * Send email with Brevo (primary), Resend, or Nodemailer (fallback)
  * @param {Object} mailOptions - Email options (from, to, subject, text, html)
  * @returns {Promise<Object>} - Email send result
  */
@@ -68,7 +77,36 @@ const sendEmail = async (mailOptions) => {
   console.log('📧 [EMAIL] Target:', mailOptions.to);
   console.log('📧 [EMAIL] Subject:', mailOptions.subject);
 
-  // Try Resend first (works on Render)
+  // Try Brevo first (300 emails/day, no audience restrictions)
+  if (brevoApiKey) {
+    try {
+      console.log('⏳ [EMAIL] Sending via Brevo (HTTP API)...');
+
+      const response = await axios.post('https://api.brevo.com/v3/smtp/email', {
+        sender: { name: 'Codec', email: process.env.EMAIL_USER || 'noreply@codec.com' },
+        to: [{ email: mailOptions.to }],
+        subject: mailOptions.subject,
+        htmlContent: mailOptions.html || mailOptions.text
+      }, {
+        headers: {
+          'api-key': brevoApiKey,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      console.log('╔════════════════════════════════════════════════════════════╗');
+      console.log('║         EMAIL SEND SUCCESS ✅ (Brevo)                      ║');
+      console.log('╚════════════════════════════════════════════════════════════╝');
+      console.log('✅ [EMAIL] Message ID:', response.data.messageId);
+
+      return response.data;
+    } catch (error) {
+      console.error('❌ [EMAIL] Brevo failed:', error.message);
+      console.error('❌ [EMAIL] Trying Resend...');
+    }
+  }
+
+  // Try Resend second (works on Render but has audience restrictions)
   if (resend) {
     try {
       console.log('⏳ [EMAIL] Sending via Resend (HTTP API)...');
@@ -80,22 +118,8 @@ const sendEmail = async (mailOptions) => {
         html: mailOptions.html || mailOptions.text
       });
 
-      // Check if there's an error in the response
       if (result.error) {
-        console.error('╔════════════════════════════════════════════════════════════╗');
-        console.error('║         EMAIL SEND FAILED ❌ (Resend)                      ║');
-        console.error('╚════════════════════════════════════════════════════════════╝');
         console.error('❌ [EMAIL] Resend Error:', result.error.message);
-        console.error('❌ [EMAIL] Status Code:', result.error.statusCode);
-
-        if (result.error.statusCode === 404 && result.error.message === 'User not found') {
-          console.error('⚠️  [EMAIL] SOLUTION: Add recipient to Resend Audience');
-          console.error('⚠️  [EMAIL] 1. Go to: https://resend.com/audiences');
-          console.error('⚠️  [EMAIL] 2. Click "Add Contact"');
-          console.error('⚠️  [EMAIL] 3. Add email:', mailOptions.to);
-          console.error('⚠️  [EMAIL] OR verify a custom domain at: https://resend.com/domains');
-        }
-
         throw new Error(`Resend API Error: ${result.error.message}`);
       }
 
@@ -142,7 +166,7 @@ const sendEmail = async (mailOptions) => {
     }
   }
 
-  throw new Error('No email service available. Set RESEND_API_KEY or EMAIL_USER/EMAIL_PASS');
+  throw new Error('No email service available. Set BREVO_API_KEY, RESEND_API_KEY, or EMAIL_USER/EMAIL_PASS');
 };
 
 /**
