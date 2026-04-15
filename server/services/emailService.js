@@ -1,126 +1,129 @@
 const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
 console.log('📧 [EMAIL] Initializing Email Service...');
 console.log('📧 [EMAIL] EMAIL_USER:', process.env.EMAIL_USER);
 console.log('📧 [EMAIL] EMAIL_PASS:', process.env.EMAIL_PASS ? '***SET***' : '***NOT SET***');
+console.log('📧 [EMAIL] RESEND_API_KEY:', process.env.RESEND_API_KEY ? '***SET***' : '***NOT SET***');
 
-// Validate environment variables
-if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-  const errorMsg = '❌ [EMAIL] CRITICAL: EMAIL_USER or EMAIL_PASS not set in environment variables!';
-  console.error(errorMsg);
-  throw new Error(errorMsg);
+// Initialize Resend (HTTP-based, works on Render)
+let resend = null;
+if (process.env.RESEND_API_KEY) {
+  resend = new Resend(process.env.RESEND_API_KEY);
+  console.log('✅ [EMAIL] Resend initialized (HTTP-based email service)');
 }
 
-// Create transporter with production-optimized configuration
-// Using port 587 with STARTTLS to avoid IPv6/firewall issues on Render
-// CRITICAL: Do NOT use 'service' option as it overrides port to 465
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false, // Use STARTTLS instead of SSL
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  },
-  tls: {
-    rejectUnauthorized: false, // Bypass proxy/firewall TLS issues
-    minVersion: 'TLSv1.2' // Ensure modern TLS
-  },
-  connectionTimeout: 30000, // 30 seconds for Render cold starts
-  greetingTimeout: 30000, // 30 seconds for slow SMTP handshake
-  socketTimeout: 30000, // 30 seconds for socket operations
-  family: 4 // Force IPv4 to avoid IPv6 ENETUNREACH errors on Render
-});
+// Validate environment variables
+if (!process.env.RESEND_API_KEY && (!process.env.EMAIL_USER || !process.env.EMAIL_PASS)) {
+  const errorMsg = '❌ [EMAIL] CRITICAL: Neither RESEND_API_KEY nor EMAIL_USER/EMAIL_PASS are set!';
+  console.error(errorMsg);
+  console.error('❌ [EMAIL] Please set RESEND_API_KEY for production (Render blocks SMTP)');
+  console.error('❌ [EMAIL] Get free API key at: https://resend.com/api-keys');
+}
 
-console.log('📧 [EMAIL] Transporter created with production-optimized config');
-console.log('📧 [EMAIL] Host: smtp.gmail.com | Port: 587 | Secure: false (STARTTLS)');
+// Create nodemailer transporter as fallback (for local development)
+let transporter = null;
+if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+  transporter = nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS
+    },
+    tls: {
+      rejectUnauthorized: false,
+      minVersion: 'TLSv1.2'
+    },
+    connectionTimeout: 30000,
+    greetingTimeout: 30000,
+    socketTimeout: 30000,
+    family: 4
+  });
 
-// Verify transporter configuration on startup with retry logic
-const verifyTransporter = async (retries = 2) => {
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      console.log(`📧 [EMAIL] Verification attempt ${attempt}/${retries}...`);
-      await transporter.verify();
-      console.log('✅ [EMAIL] Transporter verification SUCCESS!');
-      console.log('✅ [EMAIL] Ready to send emails from:', process.env.EMAIL_USER);
-      return true;
-    } catch (error) {
-      console.error(`❌ [EMAIL] Verification attempt ${attempt}/${retries} FAILED!`);
-      console.error('❌ [EMAIL] Error:', error.message);
-      console.error('❌ [EMAIL] Error Code:', error.code);
+  console.log('📧 [EMAIL] Nodemailer transporter created (fallback for local dev)');
 
-      if (attempt < retries) {
-        console.log(`⏳ [EMAIL] Retrying in 3 seconds...`);
-        await new Promise(resolve => setTimeout(resolve, 3000));
+  // Verify transporter only in development
+  if (process.env.NODE_ENV !== 'production') {
+    transporter.verify((error) => {
+      if (error) {
+        console.error('❌ [EMAIL] Nodemailer verification failed:', error.message);
       } else {
-        console.error('❌ [EMAIL] All verification attempts failed!');
-        console.error('❌ [EMAIL] Check EMAIL_USER and EMAIL_PASS in environment variables');
+        console.log('✅ [EMAIL] Nodemailer ready');
       }
-    }
+    });
   }
-  return false;
-};
-
-// Run verification asynchronously (non-blocking)
-verifyTransporter().catch(err => {
-  console.error('❌ [EMAIL] Transporter verification error:', err.message);
-});
+}
 
 /**
- * Send email with retry logic for production resilience
+ * Send email with Resend (primary) or Nodemailer (fallback)
  * @param {Object} mailOptions - Email options (from, to, subject, text, html)
- * @param {number} retries - Number of retry attempts (default: 2)
  * @returns {Promise<Object>} - Email send result
  */
-const sendEmail = async (mailOptions, retries = 2) => {
+const sendEmail = async (mailOptions) => {
   console.log('\n╔════════════════════════════════════════════════════════════╗');
   console.log('║         EMAIL SEND ATTEMPT - START                         ║');
   console.log('╚════════════════════════════════════════════════════════════╝');
-  console.log('🚀 [EMAIL] Starting SMTP Transporter...');
-  console.log('📧 [EMAIL] Target Email:', mailOptions.to);
+  console.log('📧 [EMAIL] Target:', mailOptions.to);
   console.log('📧 [EMAIL] Subject:', mailOptions.subject);
-  console.log('📧 [EMAIL] From:', mailOptions.from);
 
-  for (let attempt = 1; attempt <= retries; attempt++) {
+  // Try Resend first (works on Render)
+  if (resend) {
     try {
-      console.log(`⏳ [EMAIL] Attempt ${attempt}/${retries} - Sending via Gmail SMTP (Port 587)...`);
-      const info = await transporter.sendMail(mailOptions);
+      console.log('⏳ [EMAIL] Sending via Resend (HTTP API)...');
+
+      const result = await resend.emails.send({
+        from: mailOptions.from || 'Codec <onboarding@resend.dev>',
+        to: mailOptions.to,
+        subject: mailOptions.subject,
+        html: mailOptions.html || mailOptions.text
+      });
 
       console.log('╔════════════════════════════════════════════════════════════╗');
-      console.log('║         EMAIL SEND SUCCESS ✅                              ║');
+      console.log('║         EMAIL SEND SUCCESS ✅ (Resend)                     ║');
       console.log('╚════════════════════════════════════════════════════════════╝');
-      console.log('✅ [EMAIL] Message ID:', info.messageId);
-      console.log('✅ [EMAIL] Response:', info.response);
-      console.log('✅ [EMAIL] Accepted:', info.accepted);
-      console.log('✅ [EMAIL] Rejected:', info.rejected);
+      console.log('✅ [EMAIL] Message ID:', result.data?.id);
 
-      return info;
+      return result;
     } catch (error) {
-      console.error('╔════════════════════════════════════════════════════════════╗');
-      console.error(`║         EMAIL SEND ATTEMPT ${attempt}/${retries} FAILED ❌              ║`);
-      console.error('╚════════════════════════════════════════════════════════════╝');
-      console.error('❌ [EMAIL] SMTP ERROR DETAIL:', error.message);
-      console.error('❌ [EMAIL] Error Code:', error.code);
-      console.error('❌ [EMAIL] Error Command:', error.command);
-      console.error('❌ [EMAIL] Error Response:', error.response);
-      console.error('❌ [EMAIL] Error Response Code:', error.responseCode);
+      console.error('❌ [EMAIL] Resend failed:', error.message);
+      console.error('❌ [EMAIL] Falling back to Nodemailer...');
+    }
+  }
 
-      // Check if error is retryable (network/timeout issues)
-      const isRetryable = error.code === 'ETIMEDOUT' ||
-        error.code === 'ENETUNREACH' ||
-        error.code === 'ECONNREFUSED' ||
-        error.code === 'ESOCKET';
+  // Fallback to Nodemailer (for local development)
+  if (transporter) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        console.log(`⏳ [EMAIL] Attempt ${attempt}/2 - Sending via Nodemailer...`);
+        const info = await transporter.sendMail(mailOptions);
 
-      if (attempt < retries && isRetryable) {
-        console.log(`⏳ [EMAIL] Retryable error detected. Waiting 3 seconds before retry...`);
-        await new Promise(resolve => setTimeout(resolve, 3000));
-      } else {
-        console.error('❌ [EMAIL] CRITICAL: All retry attempts exhausted or non-retryable error');
-        console.error('❌ [EMAIL] Full Error Stack:', error.stack);
-        throw error;
+        console.log('╔════════════════════════════════════════════════════════════╗');
+        console.log('║         EMAIL SEND SUCCESS ✅ (Nodemailer)                 ║');
+        console.log('╚════════════════════════════════════════════════════════════╝');
+        console.log('✅ [EMAIL] Message ID:', info.messageId);
+
+        return info;
+      } catch (error) {
+        console.error(`❌ [EMAIL] Nodemailer attempt ${attempt}/2 failed:`, error.message);
+
+        const isRetryable = error.code === 'ETIMEDOUT' ||
+          error.code === 'ENETUNREACH' ||
+          error.code === 'ECONNREFUSED' ||
+          error.code === 'ESOCKET';
+
+        if (attempt < 2 && isRetryable) {
+          console.log('⏳ [EMAIL] Retrying in 3 seconds...');
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        } else {
+          throw error;
+        }
       }
     }
   }
+
+  throw new Error('No email service available. Set RESEND_API_KEY or EMAIL_USER/EMAIL_PASS');
 };
 
 /**
