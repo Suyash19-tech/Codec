@@ -1,19 +1,11 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
-const nodemailer = require('nodemailer');
+const { sendSignupOTP, sendPasswordResetOTP } = require('../services/emailService');
 
 const generateToken = (user) => {
   const payload = { id: user._id, email: user.email, role: user.role };
   return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
 };
-
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  }
-});
 
 // Step 2: Auth Controllers Refactored
 
@@ -37,16 +29,13 @@ exports.sendSignupOtp = async (req, res) => {
     user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
     await user.save();
 
-    // Send email asynchronously (don't wait for it)
-    transporter.sendMail({
-      from: `"Codec Admin" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: 'Codec Signup Verification Code',
-      text: `Your Codec Signup Code is: ${otp}\n\nThis code expires in 10 minutes.`
-    }).catch(err => console.error('[EMAIL] Signup OTP send error:', err));
+    console.log(`[AUTH] Signup OTP generated for ${email}: ${otp}`);
 
-    // Respond immediately
+    // Respond immediately (non-blocking)
     res.status(200).json({ message: 'Signup OTP sent successfully' });
+
+    // Send email asynchronously after response
+    sendSignupOTP(email, otp);
   } catch (error) {
     console.error('[AUTH] Signup OTP Error:', error);
     res.status(500).json({ message: 'Failed to send OTP' });
@@ -124,16 +113,13 @@ exports.sendForgotPasswordOtp = async (req, res) => {
     user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
     await user.save();
 
-    // Send email asynchronously (don't wait for it)
-    transporter.sendMail({
-      from: `"Codec Admin" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: 'Codec Password Reset Code',
-      text: `Your Codec Password Reset Code is: ${otp}\n\nThis code expires in 10 minutes.`
-    }).catch(err => console.error('[EMAIL] Forgot password OTP send error:', err));
+    console.log(`[AUTH] Password reset OTP generated for ${email}: ${otp}`);
 
-    // Respond immediately
+    // Respond immediately (non-blocking)
     res.status(200).json({ message: 'Reset OTP sent successfully' });
+
+    // Send email asynchronously after response
+    sendPasswordResetOTP(email, otp);
   } catch (error) {
     console.error('[AUTH] Forgot Pw OTP Error:', error);
     res.status(500).json({ message: 'Failed to send reset code' });
