@@ -279,19 +279,13 @@ function ShareModal({ doc, onClose }) {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const token = localStorage.getItem('codec_token')
                 const [usersRes, groupsRes] = await Promise.all([
-                    fetch('/api/users', { headers: { Authorization: 'Bearer ' + token } }),
-                    fetch('/api/groups', { headers: { Authorization: 'Bearer ' + token } })
+                    apiClient.get('/api/users'),
+                    apiClient.get('/api/groups')
                 ])
 
-                if (usersRes.ok) {
-                    const data = await usersRes.json()
-                    setUsers(data.filter(u => u._id !== localStorage.getItem('codec_user_id')))
-                }
-                if (groupsRes.ok) {
-                    setGroups(await groupsRes.json())
-                }
+                setUsers(usersRes.data.filter(u => u._id !== localStorage.getItem('codec_user_id')))
+                setGroups(groupsRes.data)
             } catch (err) {
                 console.error("Failed to fetch sharing data", err)
             } finally {
@@ -305,29 +299,22 @@ function ShareModal({ doc, onClose }) {
         setSharing(true)
         setMessage(null)
         try {
-            const token = localStorage.getItem('codec_token')
-            const res = await fetch(`/api/documents/${doc.id}/share`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: 'Bearer ' + token
-                },
-                body: JSON.stringify({ targetUserId, shareWithDepartment, targetGroupId })
+            await apiClient.post(`/api/documents/${doc.id}/share`, {
+                targetUserId,
+                shareWithDepartment,
+                targetGroupId
             })
-            if (res.ok) {
-                let successMsg = 'Document shared!'
-                if (shareWithDepartment) successMsg = 'Shared with department!'
-                else if (targetGroupId) successMsg = 'Shared with group!'
 
-                setMessage({ type: 'success', text: successMsg })
-                if (targetUserId) {
-                    setUsers(prev => prev.filter(u => u._id !== targetUserId))
-                }
-            } else {
-                setMessage({ type: 'error', text: 'Sharing failed.' })
+            let successMsg = 'Document shared!'
+            if (shareWithDepartment) successMsg = 'Shared with department!'
+            else if (targetGroupId) successMsg = 'Shared with group!'
+
+            setMessage({ type: 'success', text: successMsg })
+            if (targetUserId) {
+                setUsers(prev => prev.filter(u => u._id !== targetUserId))
             }
         } catch (err) {
-            setMessage({ type: 'error', text: 'Network error.' })
+            setMessage({ type: 'error', text: err.response?.data?.message || 'Sharing failed.' })
         } finally {
             setSharing(false)
         }
@@ -463,19 +450,10 @@ function SummaryPanel({ doc, onClose }) {
     const generate = useCallback(async () => {
         setSummary(''); setLoading(true); setGenerated(false)
         try {
-            const token = localStorage.getItem('codec_token')
-            const res = await fetch(`/api/documents/${doc.id}/summarize`, {
-                method: 'POST',
-                headers: { Authorization: 'Bearer ' + token }
-            });
-            const data = await res.json()
-            if (res.ok) {
-                setSummary(data.summary)
-            } else {
-                setSummary(data.message || 'Failed to generate summary.')
-            }
-        } catch {
-            setSummary('Connection error. Please try again.')
+            const { data } = await apiClient.post(`/api/documents/${doc.id}/summarize`)
+            setSummary(data.summary)
+        } catch (err) {
+            setSummary(err.response?.data?.message || 'Failed to generate summary.')
         } finally {
             setLoading(false); setGenerated(true)
         }
@@ -1089,24 +1067,12 @@ export default function MyUploadsView({ userRole, initialFolderId = null }) {
         const isConfirmed = window.confirm("Are you sure you want to delete this file? Once deleted, it cannot be recovered from the platform.");
         if (!isConfirmed) return;
 
-        const token = localStorage.getItem('codec_token');
-        if (!token) return;
-
         try {
-            const res = await fetch(`/api/documents/${id}`, {
-                method: 'DELETE',
-                headers: { Authorization: 'Bearer ' + token },
-            });
-
-            if (res.ok) {
-                setDocs(p => p.filter(d => d.id !== id));
-            } else {
-                const data = await res.json().catch(() => ({}));
-                console.error('Delete failed:', data.message || res.status);
-                alert(`Delete failed: ${data.message || 'Unknown error'}`);
-            }
+            await apiClient.delete(`/api/documents/${id}`)
+            setDocs(p => p.filter(d => d.id !== id));
         } catch (err) {
-            console.error('Delete error:', err);
+            console.error('Delete failed:', err);
+            alert(`Delete failed: ${err.response?.data?.message || 'Unknown error'}`);
         }
     }, [])
 
@@ -1116,27 +1082,14 @@ export default function MyUploadsView({ userRole, initialFolderId = null }) {
             if (!isConfirmed) return;
         }
 
-        const token = localStorage.getItem('codec_token');
-        if (!token) return;
-
         try {
-            const res = await fetch(`/api/documents/${doc.id}/privacy`, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: 'Bearer ' + token
-                },
-                body: JSON.stringify({ isPublic: !doc.isPublic })
-            });
-
-            if (res.ok) {
-                setDocs(p => p.map(d => d.id === doc.id ? { ...d, isPublic: !doc.isPublic } : d));
-            } else {
-                const data = await res.json().catch(() => ({}));
-                alert(`Toggle failed: ${data.message || 'Unknown error'}`);
-            }
+            await apiClient.patch(`/api/documents/${doc.id}/privacy`, {
+                isPublic: !doc.isPublic
+            })
+            setDocs(p => p.map(d => d.id === doc.id ? { ...d, isPublic: !doc.isPublic } : d));
         } catch (err) {
             console.error('Privacy toggle error:', err);
+            alert(`Toggle failed: ${err.response?.data?.message || 'Unknown error'}`);
         }
     }, [])
 
@@ -1153,25 +1106,12 @@ export default function MyUploadsView({ userRole, initialFolderId = null }) {
 
         setIsAsking(true);
         try {
-            const token = localStorage.getItem('codec_token');
-            const res = await fetch(`/api/documents/${docId}/chat`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: 'Bearer ' + token,
-                },
-                body: JSON.stringify({ question }),
-            });
-            const data = await res.json();
-            if (res.ok) {
-                setChatAnswers(prev => ({ ...prev, [docId]: data.answer }));
-                setChatQuestion(prev => ({ ...prev, [docId]: '' }));
-            } else {
-                alert(data.message || 'Failed to get answer');
-            }
+            const { data } = await apiClient.post(`/api/documents/${docId}/chat`, { question })
+            setChatAnswers(prev => ({ ...prev, [docId]: data.answer }));
+            setChatQuestion(prev => ({ ...prev, [docId]: '' }));
         } catch (err) {
             console.error('Chat error:', err);
-            alert('Network error during chat');
+            alert(err.response?.data?.message || 'Failed to get answer');
         } finally {
             setIsAsking(false);
         }
@@ -1186,30 +1126,18 @@ export default function MyUploadsView({ userRole, initialFolderId = null }) {
         console.log('New Folder Name:', newFolderName);
         console.log('Current Folder ID:', currentFolder);
         if (!newFolderName.trim()) return;
-        const token = localStorage.getItem('codec_token');
+
         try {
-            const res = await fetch('/api/folders', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: 'Bearer ' + token
-                },
-                body: JSON.stringify({
-                    name: newFolderName,
-                    parentFolder: currentFolder
-                })
-            });
-            if (res.ok) {
-                const newFolder = await res.json();
-                setFolders(prev => [newFolder, ...prev]);
-                setNewFolderName('');
-                setShowNewFolderModal(false);
-            } else {
-                const data = await res.json();
-                alert(data.message || 'Failed to create folder');
-            }
+            const { data } = await apiClient.post('/api/folders', {
+                name: newFolderName,
+                parentFolder: currentFolder
+            })
+            setFolders(prev => [data, ...prev]);
+            setNewFolderName('');
+            setShowNewFolderModal(false);
         } catch (err) {
             console.error('Create folder error:', err);
+            alert(err.response?.data?.message || 'Failed to create folder');
         }
     };
 
@@ -1231,38 +1159,20 @@ export default function MyUploadsView({ userRole, initialFolderId = null }) {
         const newName = window.prompt('Enter new folder name:', folder.name);
         if (!newName || newName === folder.name) return;
 
-        const token = localStorage.getItem('codec_token');
         try {
-            const res = await fetch(`/api/folders/${folder._id}`, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: 'Bearer ' + token
-                },
-                body: JSON.stringify({ name: newName })
-            });
-            if (res.ok) {
-                setFolders(prev => prev.map(f => f._id === folder._id ? { ...f, name: newName } : f));
-            }
+            await apiClient.patch(`/api/folders/${folder._id}`, { name: newName })
+            setFolders(prev => prev.map(f => f._id === folder._id ? { ...f, name: newName } : f));
         } catch (err) {
             console.error('Rename folder error:', err);
         }
     };
 
     const handleToggleFolderHidden = async (folder) => {
-        const token = localStorage.getItem('codec_token');
         try {
-            const res = await fetch(`/api/folders/${folder._id}`, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: 'Bearer ' + token
-                },
-                body: JSON.stringify({ isHidden: !folder.isHidden })
-            });
-            if (res.ok) {
-                setFolders(prev => prev.filter(f => f._id !== folder._id));
-            }
+            await apiClient.patch(`/api/folders/${folder._id}`, {
+                isHidden: !folder.isHidden
+            })
+            setFolders(prev => prev.filter(f => f._id !== folder._id));
         } catch (err) {
             console.error('Toggle folder hidden error:', err);
         }
@@ -1270,23 +1180,14 @@ export default function MyUploadsView({ userRole, initialFolderId = null }) {
 
     const confirmDeleteFolder = async () => {
         if (!folderToDelete) return;
-        const token = localStorage.getItem('codec_token');
+
         try {
-            const res = await fetch(`/api/folders/${folderToDelete._id}`, {
-                method: 'DELETE',
-                headers: { Authorization: 'Bearer ' + token }
-            });
-            if (res.ok) {
-                setFolders(prev => prev.filter(f => f._id !== folderToDelete._id));
-                setFolderToDelete(null);
-                // Optional: Show success toast/alert
-            } else {
-                const data = await res.json();
-                alert(data.message || 'Failed to delete folder');
-            }
+            await apiClient.delete(`/api/folders/${folderToDelete._id}`)
+            setFolders(prev => prev.filter(f => f._id !== folderToDelete._id));
+            setFolderToDelete(null);
         } catch (err) {
             console.error('Delete folder error:', err);
-            alert('Network error while deleting folder');
+            alert(err.response?.data?.message || 'Failed to delete folder');
         }
     };
 
