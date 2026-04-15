@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react'
+import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider, useAuth } from './context/AuthContext'
 import Onboarding from './components/Onboarding'
 import Login from './components/Login'
 import Signup from './components/Signup'
@@ -7,55 +8,27 @@ import Dashboard from './components/Dashboard'
 import AdminDashboard from './components/AdminDashboard'
 import PublicProfileView from './components/PublicProfileView'
 
-function App() {
-  const [userRole, setUserRole] = useState(null)
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+// Protected Route component
+const ProtectedRoute = ({ children }) => {
+  const { isAuthenticated, isLoading } = useAuth();
 
-  // Check for existing authentication on mount
-  useEffect(() => {
-    const token = localStorage.getItem('codec_token');
-    const user = localStorage.getItem('codec_user');
-
-    if (token && user) {
-      try {
-        setIsAuthenticated(true);
-        setUserRole(JSON.parse(user).role || 'Professor');
-      } catch (error) {
-        console.error('Error parsing stored user data:', error);
-        localStorage.removeItem('codec_token');
-        localStorage.removeItem('codec_user');
-      }
-    }
-  }, []);
-
-  const handleLogin = (userData) => {
-    setIsAuthenticated(true)
-    setUserRole(userData.role || 'Professor')
-    localStorage.setItem('codec_user', JSON.stringify(userData))
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#050505]">
+        <div className="text-white text-xl">Loading...</div>
+      </div>
+    );
   }
 
-  const handleSignup = (userData) => {
-    setIsAuthenticated(true)
-    setUserRole(userData.role || 'Professor')
-    localStorage.setItem('codec_user', JSON.stringify(userData))
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
   }
 
-  const handleLogout = () => {
-    setIsAuthenticated(false)
-    setUserRole(null)
-    // Clear localStorage
-    localStorage.removeItem('codec_token')
-    localStorage.removeItem('codec_user')
-  }
+  return children;
+};
 
-  // Protected Route component
-  const ProtectedRoute = ({ children }) => {
-    const token = localStorage.getItem('codec_token');
-    if (!token) {
-      return <Navigate to="/login" replace />;
-    }
-    return children;
-  };
+function AppRoutes() {
+  const { user } = useAuth();
 
   return (
     <BrowserRouter>
@@ -79,16 +52,16 @@ function App() {
             <Route path="/onboarding" element={<Onboarding />} />
 
             {/* Login route */}
-            <Route path="/login" element={<Login onLogin={handleLogin} />} />
+            <Route path="/login" element={<Login />} />
 
             {/* Signup route */}
-            <Route path="/signup" element={<Signup onSignup={handleSignup} />} />
+            <Route path="/signup" element={<Signup />} />
 
             <Route
               path="/dashboard"
               element={
                 <ProtectedRoute>
-                  <Dashboard userRole={userRole} />
+                  <Dashboard userRole={user?.role} />
                 </ProtectedRoute>
               }
             />
@@ -117,6 +90,14 @@ function App() {
         </div>
       </div>
     </BrowserRouter>
+  )
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppRoutes />
+    </AuthProvider>
   )
 }
 

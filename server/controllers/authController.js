@@ -37,13 +37,15 @@ exports.sendSignupOtp = async (req, res) => {
     user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
     await user.save();
 
-    await transporter.sendMail({
+    // Send email asynchronously (don't wait for it)
+    transporter.sendMail({
       from: `"Codec Admin" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: 'Codec Signup Verification Code',
       text: `Your Codec Signup Code is: ${otp}\n\nThis code expires in 10 minutes.`
-    });
+    }).catch(err => console.error('[EMAIL] Signup OTP send error:', err));
 
+    // Respond immediately
     res.status(200).json({ message: 'Signup OTP sent successfully' });
   } catch (error) {
     console.error('[AUTH] Signup OTP Error:', error);
@@ -122,13 +124,15 @@ exports.sendForgotPasswordOtp = async (req, res) => {
     user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
     await user.save();
 
-    await transporter.sendMail({
+    // Send email asynchronously (don't wait for it)
+    transporter.sendMail({
       from: `"Codec Admin" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: 'Codec Password Reset Code',
       text: `Your Codec Password Reset Code is: ${otp}\n\nThis code expires in 10 minutes.`
-    });
+    }).catch(err => console.error('[EMAIL] Forgot password OTP send error:', err));
 
+    // Respond immediately
     res.status(200).json({ message: 'Reset OTP sent successfully' });
   } catch (error) {
     console.error('[AUTH] Forgot Pw OTP Error:', error);
@@ -160,5 +164,19 @@ exports.resetPassword = async (req, res) => {
   } catch (error) {
     console.error('[AUTH] Reset Pw Error:', error);
     res.status(500).json({ message: 'Failed to reset password' });
+  }
+};
+
+// Get Current User (for token verification)
+exports.getCurrentUser = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('-password -otp -otpExpires');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.status(200).json({ user });
+  } catch (error) {
+    console.error('[AUTH] Get Current User Error:', error);
+    res.status(500).json({ message: 'Failed to get user data' });
   }
 };

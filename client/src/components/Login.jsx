@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, ShieldCheck, ArrowRight, Loader2, UserPlus, LogIn, KeyRound } from 'lucide-react';
 import apiClient from '../api/axios';
+import { useAuth } from '../context/AuthContext';
 
-const Login = ({ onLogin }) => {
+const Login = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   // Modes: 'login', 'signup', 'forgot'
   const [mode, setMode] = useState('login');
@@ -34,11 +36,7 @@ const Login = ({ onLogin }) => {
     setIsLoading(true); setError('');
     try {
       const { data } = await apiClient.post('/api/auth/login', { email, password });
-
-      localStorage.setItem('codec_token', data.token);
-      localStorage.setItem('codec_user', JSON.stringify(data.user));
-      localStorage.setItem('codec_user_id', data.user._id);
-      if (onLogin) onLogin(data.user);
+      login(data.user, data.token);
       navigate('/dashboard');
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Login failed');
@@ -65,10 +63,7 @@ const Login = ({ onLogin }) => {
     setIsLoading(true); setError('');
     try {
       const { data } = await apiClient.post('/api/auth/register', { email, otp, password });
-
-      localStorage.setItem('codec_token', data.token);
-      localStorage.setItem('codec_user', JSON.stringify(data.user));
-      if (onLogin) onLogin(data.user);
+      login(data.user, data.token);
       navigate('/dashboard');
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Signup failed');

@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Upload, Search, Users, LogOut, Cpu, UserCircle, Bell, CheckCircle, Share2, Trash2 } from 'lucide-react'
 import apiClient from '../api/axios'
+import { useAuth } from '../context/AuthContext'
 import MyUploadsView from './MyUploadsView'
 import SearchPageView from './SearchPageView'
 import CommunityView from './CommunityView'
@@ -20,6 +21,7 @@ const NAV = [
 export default function Dashboard({ userRole }) {
   const navigate = useNavigate()
   const location = useLocation()
+  const { logout, user } = useAuth()
 
   // Extract state if coming from Deep Search navigation
   const initialState = location.state || {}
@@ -73,16 +75,16 @@ export default function Dashboard({ userRole }) {
 
   // Redirect admins to admin dashboard
   React.useEffect(() => {
-    if (userRole === 'Admin') {
+    const role = userRole || user?.role;
+    if (role === 'Admin') {
       navigate('/admin', { replace: true })
     }
-  }, [userRole, navigate])
+  }, [userRole, user, navigate])
 
   const handleLogout = useCallback(() => {
-    localStorage.removeItem('codec_token')
-    localStorage.removeItem('codec_user')
+    logout()
     navigate('/login', { replace: true })
-  }, [navigate])
+  }, [logout, navigate])
 
   const renderView = () => {
     if (view === 'uploads') return <MyUploadsView userRole={userRole} initialFolderId={initialState.activeFolderId || null} />
