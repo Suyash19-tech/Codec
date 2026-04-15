@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { FileText, Image as ImageIcon, BookOpen, Download, ChevronRight, User } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import apiClient from '../api/axios'
 
 // ─── Mock community data ──────────────────────────────────────────────────────
 
@@ -184,17 +185,8 @@ export default function CommunityView() {
     useEffect(() => {
         const fetchUsers = async () => {
             try {
-                const token = localStorage.getItem('codec_token')
-                if (!token) return
-
-                const res = await fetch('/api/users', {
-                    headers: { Authorization: 'Bearer ' + token },
-                })
-
-                if (res.ok) {
-                    const data = await res.json()
-                    setUsers(data)
-                }
+                const { data } = await apiClient.get('/api/users')
+                setUsers(data)
             } catch (error) {
                 console.error('Failed to fetch users:', error)
             } finally {

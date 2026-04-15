@@ -4,6 +4,7 @@ import {
     FileText, Eye, Edit3, Check, X, Camera,
     Clock, Lock, Globe,
 } from 'lucide-react'
+import apiClient from '../api/axios'
 
 // ─── ProfileView ──────────────────────────────────────────────────────────────
 
@@ -66,22 +67,12 @@ export default function ProfileView() {
     useEffect(() => {
         const fetchProfile = async () => {
             try {
-                const token = localStorage.getItem('codec_token')
-                if (!token) return
-
-                const res = await fetch('/api/users/me', {
-                    headers: { Authorization: 'Bearer ' + token },
+                const { data } = await apiClient.get('/api/users/me')
+                setUserProfile(data.user)
+                setStats({
+                    uploads: data.stats?.totalUploads || 0,
+                    publicFiles: data.stats?.publicFiles || 0
                 })
-
-                if (res.ok) {
-                    const data = await res.json()
-                    // The backend returns { user: {...}, stats: {...} }
-                    setUserProfile(data.user)
-                    setStats({
-                        uploads: data.stats?.totalUploads || 0,
-                        publicFiles: data.stats?.publicFiles || 0
-                    })
-                }
             } catch (error) {
                 console.error('Failed to fetch profile:', error)
             } finally {
@@ -94,20 +85,8 @@ export default function ProfileView() {
 
     const update = (key) => async (val) => {
         try {
-            const token = localStorage.getItem('codec_token')
-            const res = await fetch('/api/users/me', {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: 'Bearer ' + token
-                },
-                body: JSON.stringify({ [key]: val })
-            })
-
-            if (res.ok) {
-                const updatedUser = await res.json()
-                setUserProfile(updatedUser)
-            }
+            const { data } = await apiClient.put('/api/users/me', { [key]: val })
+            setUserProfile(data)
         } catch (error) {
             console.error('Failed to update profile:', error)
         }

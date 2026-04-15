@@ -7,6 +7,7 @@ import Signup from './components/Signup'
 import Dashboard from './components/Dashboard'
 import AdminDashboard from './components/AdminDashboard'
 import PublicProfileView from './components/PublicProfileView'
+import DebugInfo from './components/DebugInfo'
 
 // Protected Route component
 const ProtectedRoute = ({ children }) => {
@@ -32,6 +33,7 @@ function AppRoutes() {
 
   return (
     <BrowserRouter>
+      <DebugInfo />
       <div className="min-h-screen relative">
         {/* Fixed background with mesh gradient */}
         <div className="fixed inset-0 bg-[#050505]">
