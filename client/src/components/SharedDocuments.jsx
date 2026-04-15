@@ -603,16 +603,22 @@ export default function SharedDocuments() {
         const fetchShared = async () => {
             try {
                 const token = localStorage.getItem('codec_token')
-                const url = `/api/documents/shared?time=${timeFilter}&type=${typeFilter}&uploaderId=${uploaderFilter}`
+                const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
+                const url = `${API_URL}/api/documents/shared?time=${timeFilter}&type=${typeFilter}&uploaderId=${uploaderFilter}`
+                console.log('📡 [SharedDocuments] Fetching from:', url)
                 const res = await fetch(url, {
                     headers: { Authorization: 'Bearer ' + token }
                 })
                 if (res.ok) {
                     const data = await res.json()
+                    console.log('✅ [SharedDocuments] Received', data.length, 'documents')
+                    console.log('📄 [SharedDocuments] First doc:', data[0])
                     setDocs(data)
+                } else {
+                    console.error('❌ [SharedDocuments] Fetch failed:', res.status, res.statusText)
                 }
             } catch (err) {
-                console.error("Fetch shared error", err)
+                console.error("❌ [SharedDocuments] Fetch shared error", err)
             } finally {
                 setLoading(false)
             }
