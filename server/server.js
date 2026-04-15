@@ -59,6 +59,26 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Root route
+app.get('/', (req, res) => {
+  res.status(200).json({
+    status: 'Server is running',
+    message: 'Codec API Server',
+    version: '1.0.0',
+    endpoints: {
+      health: '/health',
+      auth: '/api/auth/*',
+      documents: '/api/documents/*',
+      users: '/api/users/*',
+      folders: '/api/folders/*',
+      groups: '/api/groups/*',
+      notifications: '/api/notifications/*',
+      messages: '/api/messages/*',
+      admin: '/api/admin/*'
+    }
+  });
+});
+
 // 2. Static File Serving (The Uploads Folder)
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
