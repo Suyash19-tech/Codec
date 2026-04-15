@@ -184,12 +184,20 @@ export default function CommunityView() {
 
     useEffect(() => {
         const fetchUsers = async () => {
+            console.log('📡 [CommunityView] Fetching users...')
             try {
                 const { data } = await apiClient.get('/api/users')
+                console.log('✅ [CommunityView] Received users:', data.length)
+                console.log('📄 [CommunityView] First user:', data[0])
                 setUsers(data)
             } catch (error) {
-                console.error('Failed to fetch users:', error)
+                console.error('❌ [CommunityView] Failed to fetch users:', error)
+                console.error('❌ [CommunityView] Error response:', error.response?.data)
+                console.error('❌ [CommunityView] Error status:', error.response?.status)
+                // Set empty array on error so UI shows "No members"
+                setUsers([])
             } finally {
+                console.log('✅ [CommunityView] Loading complete')
                 setIsLoading(false)
             }
         }
