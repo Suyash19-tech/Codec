@@ -253,17 +253,28 @@ export default function PublicProfileView() {
     // Fetch user details
     useEffect(() => {
         const fetchUser = async () => {
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
+            console.log('📡 [PublicProfile] Fetching user:', userId, 'from:', API_URL)
             try {
                 const token = localStorage.getItem('codec_token')
-                const res = await fetch(`/api/users/${userId}`, {
+                const res = await fetch(`${API_URL}/api/users/${userId}`, {
                     headers: { Authorization: 'Bearer ' + token }
                 })
+
+                console.log('📥 [PublicProfile] User fetch response status:', res.status)
+
                 if (res.ok) {
                     const data = await res.json()
+                    console.log('✅ [PublicProfile] Profile Data:', data)
                     setProfileUser(data)
+                } else {
+                    const errorText = await res.text()
+                    console.error('❌ [PublicProfile] User fetch failed:', res.status, errorText)
+                    setProfileUser({ error: true, message: 'Failed to load profile' })
                 }
             } catch (err) {
-                console.error("Failed to fetch user", err)
+                console.error("❌ [PublicProfile] Failed to fetch user", err)
+                setProfileUser({ error: true, message: 'Network error loading profile' })
             }
         }
         fetchUser()
@@ -273,18 +284,28 @@ export default function PublicProfileView() {
     useEffect(() => {
         const fetchDocs = async () => {
             setIsLoading(true)
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
+            console.log('📡 [PublicProfile] Fetching docs for user:', userId, 'query:', searchQuery)
             try {
                 const token = localStorage.getItem('codec_token')
-                const url = `/api/documents/user/${userId}/public?q=${encodeURIComponent(searchQuery)}`
+                const url = `${API_URL}/api/documents/user/${userId}/public?q=${encodeURIComponent(searchQuery)}`
                 const res = await fetch(url, {
                     headers: { Authorization: 'Bearer ' + token }
                 })
+
+                console.log('📥 [PublicProfile] Docs fetch response status:', res.status)
+
                 if (res.ok) {
                     const data = await res.json()
+                    console.log('✅ [PublicProfile] Received', data.length, 'documents')
                     setPublicDocs(data)
+                } else {
+                    console.error('❌ [PublicProfile] Docs fetch failed:', res.status)
+                    setPublicDocs([])
                 }
             } catch (err) {
-                console.error("Failed to fetch docs", err)
+                console.error("❌ [PublicProfile] Failed to fetch docs", err)
+                setPublicDocs([])
             } finally {
                 setIsLoading(false)
             }
@@ -300,9 +321,10 @@ export default function PublicProfileView() {
     const handleSummarize = async (docId) => {
         setIsSummarizing(true);
         setActiveSummaryId(docId);
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
         try {
             const token = localStorage.getItem('codec_token');
-            const res = await fetch(`/api/documents/${docId}/summarize`, {
+            const res = await fetch(`${API_URL}/api/documents/${docId}/summarize`, {
                 method: 'POST',
                 headers: {
                     Authorization: 'Bearer ' + token,
@@ -337,9 +359,10 @@ export default function PublicProfileView() {
 
         setIsAsking(true);
         setActiveSummaryId(docId); // Reuse this to track active doc
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
         try {
             const token = localStorage.getItem('codec_token');
-            const res = await fetch(`/api/documents/${docId}/chat`, {
+            const res = await fetch(`${API_URL}/api/documents/${docId}/chat`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -376,6 +399,30 @@ export default function PublicProfileView() {
         return (
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#09090b' }}>
                 <span style={{ color: '#6b7280', fontFamily: "'DM Mono', monospace" }}>Loading Profile...</span>
+            </div>
+        )
+    }
+
+    if (profileUser.error) {
+        return (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#09090b', gap: 16 }}>
+                <User size={48} color="#4b5563" />
+                <span style={{ color: '#9ca3af', fontSize: 16 }}>Failed to load profile</span>
+                <span style={{ color: '#6b7280', fontSize: 13, fontFamily: "'DM Mono', monospace" }}>{profileUser.message}</span>
+                <button
+                    onClick={() => window.history.back()}
+                    style={{
+                        marginTop: 16,
+                        padding: '10px 20px',
+                        borderRadius: 8,
+                        background: 'rgba(255,255,255,0.05)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        color: '#9ca3af',
+                        cursor: 'pointer'
+                    }}
+                >
+                    Go Back
+                </button>
             </div>
         )
     }
